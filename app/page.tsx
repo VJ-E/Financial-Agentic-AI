@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 type Message = {
-    role: "user" | "model";
+    role: "user" | "assistant";
     content: string;
 };
 
@@ -17,7 +17,8 @@ export default function Home() {
         if (!input.trim() || isLoading) return;
 
         const userMsg: Message = { role: "user", content: input };
-        setMessages((prev) => [...prev, userMsg]);
+        const newMessages = [...messages, userMsg];
+        setMessages(newMessages);
         setInput("");
         setIsLoading(true);
 
@@ -25,7 +26,7 @@ export default function Home() {
             const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: userMsg.content }),
+                body: JSON.stringify({ messages: newMessages }),
             });
 
             if (!response.ok) {
@@ -33,12 +34,12 @@ export default function Home() {
             }
 
             const data = await response.json();
-            setMessages((prev) => [...prev, { role: "model", content: data.reply }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
         } catch (error) {
             console.error(error);
             setMessages((prev) => [
                 ...prev,
-                { role: "model", content: "Error: Unable to connect to backend." },
+                { role: "assistant", content: "Error: Unable to connect to backend." },
             ]);
         } finally {
             setIsLoading(false);

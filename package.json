@@ -21,10 +21,14 @@
   "homepage": "https://github.com/VJ-E/Financial-Agentic-AI#readme",
   "description": "",
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.39",
     "@google/genai": "^1.43.0",
+    "ai": "^3.4.15",
     "next": "^16.1.6",
+    "ollama-ai-provider": "^1.2.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
