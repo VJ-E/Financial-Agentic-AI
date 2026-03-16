@@ -1,12 +1,82 @@
-/* Barebones styling for MVP */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background-color: #f9f9f9;
-  color: #333;
+@layer base {
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f4f4f4;
+    --text-primary: #000000;
+    --border-color: #000000;
+    --brutalist-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+    --brutalist-shadow-hover: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+    --brutalist-shadow-active: 0px 0px 0px 0px rgba(0, 0, 0, 1);
+  }
+
+  body {
+    @apply bg-white text-black font-sans antialiased;
+  }
+
+  * {
+    border-radius: 0 !important;
+  }
 }
 
-* {
-  box-sizing: border-box;
+@layer components {
+  .brutalist-card {
+    @apply bg-white border-2 border-black p-6;
+    box-shadow: var(--brutalist-shadow);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  .brutalist-button {
+    @apply bg-black text-white border-2 border-black font-bold uppercase tracking-wide px-6 py-3 cursor-pointer;
+    box-shadow: var(--brutalist-shadow);
+    transition: all 0.1s ease;
+  }
+
+  .brutalist-button:hover {
+    @apply bg-white text-black;
+    transform: translate(2px, 2px);
+    box-shadow: var(--brutalist-shadow-hover);
+  }
+
+  .brutalist-button:active {
+    transform: translate(4px, 4px);
+    box-shadow: var(--brutalist-shadow-active);
+  }
+
+  .brutalist-input {
+    @apply bg-white border-2 border-black px-4 py-3 font-medium outline-none;
+    box-shadow: var(--brutalist-shadow);
+  }
+
+  .brutalist-input:focus {
+    @apply ring-0;
+    box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f4f4f4;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #000;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-track {
+    background: #000;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-thumb {
+    background: #fff;
+  }
 }

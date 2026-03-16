@@ -24,15 +24,20 @@
     "@ai-sdk/openai": "^3.0.39",
     "@google/genai": "^1.43.0",
     "ai": "^3.4.15",
+    "lucide-react": "^0.577.0",
     "next": "^16.1.6",
     "ollama-ai-provider": "^1.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "recharts": "^3.8.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
     "@types/react": "^19.2.14",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3"
   }
 }
