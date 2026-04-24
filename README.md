@@ -9,7 +9,6 @@
 A strictly deterministic, mathematically-sound autonomous financial assistant built across a decoupled microservice architecture. The ecosystem bridges a neo-brutalist Next.js dashboard with a fault-tolerant Python FastAPI backend natively powered by **LangGraph** and **ChatGroq**. The agent executes atomic operations securely against an Async MongoDB (Motor) state machine and a responsive Qdrant local Vector database ensuring robust AI semantic retrievals paired linearly against literal transaction ledgers without hallucinations over real-time **Server-Sent Events (SSE)**.
 
 ## Screenshots
-*(Insert Screenshots Here)*
 
 ![Dashboard GUI](docs/screenshot1.png)
 ![Terminal Chat Interaction](docs/screenshot2.png)
