@@ -1,23 +1,25 @@
-import { NextResponse } from 'next/server';
-import { getFinancialSummary } from '../../../lib/financialTools';
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
     try {
-        // Hardcoded generic user mapping for MVP until Auth is integrated
-        const MOCK_USER_ID = "user_123";
+        const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+        const response = await fetch(`${BACKEND_URL}/finance`, {
+            cache: 'no-store'
+        });
 
-        // Fetch the user's live profile and recent transactions natively from Mongoose
-        const financeData = await getFinancialSummary(MOCK_USER_ID);
+        const payload = await response.json();
 
-        if (!financeData.success) {
-            return NextResponse.json({ error: financeData.message }, { status: 404 });
-        }
+        // FastAPI returns { success: true, data: { profile, recentTransactions } }
+        // Next.js frontend natively expects { profile, recentTransactions }
+        const unwrappedData = payload.data ? payload.data : payload;
 
-        return NextResponse.json(financeData.data);
+        return NextResponse.json(unwrappedData);
     } catch (error) {
-        console.error("Database fetch error:", error);
+        console.error("Finance API Proxy Error:", error);
         return NextResponse.json(
-            { error: "Failed to retrieve financial dashboard data." },
+            { success: false, message: "Failed to connect to Python backend." },
             { status: 500 }
         );
     }
