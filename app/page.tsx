@@ -1,54 +1,116 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, DollarSign, Briefcase } from 'lucide-react';
+import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare } from 'lucide-react';
 
 type Message = {
     role: "user" | "assistant";
     content: string;
 };
 
-// --- INITIAL MOCK DATA ---
-const initialSummaryData = {
-    income: 12450.00,
-    expenses: 8320.00,
-    balance: 24500.00,
+// --- DEFAULT FALLBACK DATA (While Loading) ---
+const fallbackSummaryData = {
+    income: 0,
+    expenses: 0,
+    balance: 0,
 };
 
-const initialTopSpendingData = [
-    { category: "Housing", amount: 2500, icon: <Briefcase className="w-6 h-6" /> },
-    { category: "Food & Dining", amount: 1200, icon: <CreditCard className="w-6 h-6" /> },
-    { category: "Transportation", amount: 800, icon: <DollarSign className="w-6 h-6" /> },
-];
-
-const initialCashFlowData = [
-    { month: 'Jan', cashflow: 3000 },
-    { month: 'Feb', cashflow: 2500 },
-    { month: 'Mar', cashflow: 4000 },
-    { month: 'Apr', cashflow: 3200 },
-    { month: 'May', cashflow: 5000 },
-    { month: 'Jun', cashflow: 4130 },
-];
-
-const initialExpensesBarData = [
-    { category: 'Housing', val: 2500 },
-    { category: 'Food', val: 1200 },
-    { category: 'Trans.', val: 800 },
-    { category: 'Utils', val: 400 },
-    { category: 'Ent.', val: 300 },
+const defaultTopSpending = [
+    { category: "Housing", amount: 0, icon: <Briefcase className="w-6 h-6" /> },
+    { category: "Food", amount: 0, icon: <CreditCard className="w-6 h-6" /> },
+    { category: "Transport", amount: 0, icon: <IndianRupee className="w-6 h-6" /> },
 ];
 
 export default function Home() {
     const [input, setInput] = useState("");
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isPageLoading, setIsPageLoading] = useState(true);
+    const [isChatOpen, setIsChatOpen] = useState(false);
 
-    // Dynamic State
-    const [summaryData, setSummaryData] = useState(initialSummaryData);
-    const [topSpendingData, setTopSpendingData] = useState(initialTopSpendingData);
-    const [cashFlowData, setCashFlowData] = useState(initialCashFlowData);
-    const [expensesBarData, setExpensesBarData] = useState(initialExpensesBarData);
+    // Dynamic State mapped to Backend
+    const [summaryData, setSummaryData] = useState(fallbackSummaryData);
+    const [topSpendingData, setTopSpendingData] = useState(defaultTopSpending);
+    const [cashFlowData, setCashFlowData] = useState([]);
+    const [expensesBarData, setExpensesBarData] = useState([]);
+    const [recentLedgerData, setRecentLedgerData] = useState([]);
+    const [vaultsData, setVaultsData] = useState([]);
+
+    const fetchDashboardData = async () => {
+        try {
+            const res = await fetch("/api/finance");
+            if (!res.ok) throw new Error("Failed to fetch dashboard data");
+            const data = await res.json();
+
+            if (data.profile) {
+                let calculatedIncome = 0;
+                let calculatedExpenses = 0;
+
+                if (data.recentTransactions) {
+                    data.recentTransactions.forEach((t: any) => {
+                        if (t.category === 'Income') calculatedIncome += t.amount;
+                        else if (t.category === 'Fixed' || t.category === 'Variable') calculatedExpenses += Math.abs(t.amount);
+                    });
+                }
+
+                setSummaryData({
+                    income: calculatedIncome,
+                    expenses: calculatedExpenses,
+                    balance: data.profile.totalBalance,
+                });
+
+                if (data.profile.activeSavingsGoals) {
+                    const uniqueVaults = Array.from(new Map(data.profile.activeSavingsGoals.map((item: any) => [item.title, item])).values());
+                    setVaultsData(uniqueVaults as any);
+                }
+            }
+
+            // In a production app, we would dynamically aggregate transactions here
+            // For MVP, if there are transactions, we group them rudimentary or map them.
+            if (data.recentTransactions && data.recentTransactions.length > 0) {
+                // Basic mapping of recent transactions to the Top Spending format for visual verification
+                const recentAsSpending = data.recentTransactions.slice(0, 3).map((t: any) => ({
+                    category: t.description || t.category,
+                    amount: t.amount,
+                    icon: <IndianRupee className="w-6 h-6" />
+                }));
+                setTopSpendingData(recentAsSpending);
+
+                const formattedBarData = data.recentTransactions.filter((t: any) => t.category !== 'Income').map((t: any) => ({
+                    category: t.description.substring(0, 8),
+                    val: t.amount
+                }));
+                setExpensesBarData(formattedBarData);
+
+                const cashFlowByMonth: { [key: string]: number } = {};
+                const reversedTransactions = [...data.recentTransactions].reverse();
+                reversedTransactions.forEach((t: any) => {
+                    const date = new Date(t.date);
+                    const month = date.toLocaleString('default', { month: 'short' });
+                    const flow = t.category === 'Income' ? t.amount : -Math.abs(t.amount);
+                    cashFlowByMonth[month] = (cashFlowByMonth[month] || 0) + flow;
+                });
+                const cashFlowMvPData = Object.keys(cashFlowByMonth).map(month => ({
+                    month,
+                    cashflow: cashFlowByMonth[month]
+                }));
+                setCashFlowData(cashFlowMvPData as any);
+
+                // Store raw transactions for the ledger
+                setRecentLedgerData(data.recentTransactions);
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsPageLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -61,70 +123,48 @@ export default function Home() {
         setIsLoading(true);
 
         try {
-            // SIMULATING API COMMUNICATING WITH BACKEND AGENT
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            const promptLower = input.toLowerCase();
+            // Hit the actual LLM Agent backend
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messages: newMessages }),
+            });
 
-            let replyText = "Query processed. No actionable financial updates identified.";
+            if (!response.ok) throw new Error("Agent failed to respond.");
 
-            // Extremely basic intent parsing simulation
-            if (promptLower.includes('add') && (promptLower.includes('groceries') || promptLower.includes('food'))) {
-                const amountMatch = input.match(/\$(\d+)/);
-                const amount = amountMatch ? parseInt(amountMatch[1]) : 50;
+            const data = await response.json();
 
-                setSummaryData(prev => ({
-                    ...prev,
-                    expenses: prev.expenses + amount,
-                    balance: prev.balance - amount
-                }));
+            // Apply the AI's textual response
+            setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
 
-                setTopSpendingData(prev => prev.map(item =>
-                    item.category === "Food & Dining" ? { ...item, amount: item.amount + amount } : item
-                ));
-
-                setExpensesBarData(prev => prev.map(item =>
-                    item.category === 'Food' ? { ...item, val: item.val + amount } : item
-                ));
-
-                replyText = `SUCCESS: Added $${amount} to Food & Dining. Dashboard data dynamically updated.`;
-            } else if (promptLower.includes('add') && promptLower.includes('income')) {
-                const amountMatch = input.match(/\$(\d+)/);
-                const amount = amountMatch ? parseInt(amountMatch[1]) : 1000;
-
-                setSummaryData(prev => ({
-                    ...prev,
-                    income: prev.income + amount,
-                    balance: prev.balance + amount
-                }));
-
-                replyText = `SUCCESS: Registered $${amount} as new income. Balance recalculated.`;
-            } else if (promptLower.includes('reset') || promptLower.includes('clear')) {
-                setSummaryData(initialSummaryData);
-                setTopSpendingData(initialTopSpendingData);
-                setExpensesBarData(initialExpensesBarData);
-                setCashFlowData(initialCashFlowData);
-                replyText = "SUCCESS: Reverted dashboard to initial mock state.";
-            }
-
-            setMessages((prev) => [...prev, { role: "assistant", content: replyText }]);
+            // CRITICAL: Force the dashboard to securely pull the new mathematical truth from MongoDB
+            await fetchDashboardData();
 
         } catch (error) {
             console.error(error);
-            setMessages((prev) => [...prev, { role: "assistant", content: "CRITICAL ERROR: Unable to synchronize with mainframe." }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: "CRITICAL ERROR: Unable to communicate with agent." }]);
         } finally {
             setIsLoading(false);
         }
     };
 
+    if (isPageLoading) {
+        return (
+            <div className="h-screen w-full flex items-center justify-center bg-white text-black font-mono text-xl font-bold uppercase tracking-widest border-8 border-black">
+                INITIALIZING SYSTEM CORE...
+            </div>
+        )
+    }
+
     return (
-        <div className="h-screen w-full flex flex-col font-sans bg-white text-black overflow-hidden relative">
+        <div className="h-screen w-full flex font-sans bg-white text-black overflow-hidden relative">
             {/* BACKGROUND PATTERN */}
             <div className="absolute inset-0 pointer-events-none opacity-5 z-0"
                 style={{ backgroundImage: 'repeating-linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%, #000), repeating-linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%, #000)', backgroundSize: '40px 40px' }}>
             </div>
 
-            {/* MAIN DASHBOARD AREA - Scrollable top 80% */}
-            <main className="h-[80vh] w-full overflow-y-auto border-b-4 border-black z-10 p-4 md:p-8">
+            {/* MAIN DASHBOARD AREA */}
+            <main className={`h-full overflow-y-auto z-10 p-4 md:p-8 transition-all duration-300 ${isChatOpen ? 'w-[70%]' : 'w-full'}`}>
                 <div className="max-w-7xl mx-auto space-y-8">
 
                     {/* HEADER */}
@@ -147,16 +187,16 @@ export default function Home() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="brutalist-card bg-white relative overflow-hidden group">
                             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-100 transition-opacity">
-                                <DollarSign className="w-16 h-16" />
+                                <IndianRupee className="w-16 h-16" />
                             </div>
                             <h2 className="text-xl font-bold uppercase mb-2">Net Balance</h2>
-                            <p className="text-5xl md:text-6xl font-black tracking-tighter">${summaryData.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                            <p className="text-5xl md:text-6xl font-black tracking-tighter">₹{summaryData.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                         </div>
                         <div className="brutalist-card bg-[#f4f4f4]">
                             <h2 className="text-xl font-bold uppercase mb-2 flex items-center gap-2">
                                 <ArrowUpRight className="w-6 h-6 border-2 border-black rounded-sm p-0.5 bg-black text-white" /> Total Income
                             </h2>
-                            <p className="text-4xl font-black tracking-tighter">${summaryData.income.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                            <p className="text-4xl font-black tracking-tighter">₹{summaryData.income.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                             <div className="mt-4 h-2 w-full bg-white border-2 border-black relative">
                                 <div className="absolute top-0 left-0 h-full bg-black" style={{ width: '70%' }}></div>
                             </div>
@@ -165,12 +205,57 @@ export default function Home() {
                             <h2 className="text-xl font-bold uppercase mb-2 flex items-center gap-2">
                                 <ArrowDownRight className="w-6 h-6 border-2 border-black rounded-sm p-0.5 bg-white text-black" /> Total Expenses
                             </h2>
-                            <p className="text-4xl font-black tracking-tighter">${summaryData.expenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                            <p className="text-4xl font-black tracking-tighter">₹{summaryData.expenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                             <div className="mt-4 h-2 w-full bg-white border-2 border-black relative">
                                 <div className="absolute top-0 left-0 h-full bg-black shadow-[2px_0_0_0_#FFF] border-[url('data:image/svg+xml;base64,...')]" style={{ width: '45%' }}></div>
                             </div>
                         </div>
                     </div>
+
+                    {/* SAVINGS VAULTS WIDGET */}
+                    {vaultsData.length > 0 && (
+                        <div className="brutalist-card mt-8 border-t-[8px] border-black">
+                            <h2 className="text-2xl font-bold uppercase mb-6 pb-2 border-b-4 border-black inline-block">Savings Vaults</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {vaultsData.map((vault: any) => {
+                                    const percentComplete = vault.targetAmount > 0
+                                        ? Math.min(100, Math.max(0, (vault.currentAmount / vault.targetAmount) * 100))
+                                        : 0;
+
+                                    return (
+                                        <div key={vault.shortId} className="p-4 border-4 border-black bg-white shadow-brutalist flex flex-col justify-between hover:-translate-y-1 transition-transform">
+                                            <div>
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <h3 className="font-black text-xl uppercase truncate pr-2">{vault.title}</h3>
+                                                    <span className="bg-black text-white text-xs font-mono px-2 py-1 font-bold tracking-widest uppercase">
+                                                        ID: {vault.shortId}
+                                                    </span>
+                                                </div>
+                                                <p className="text-3xl font-black mb-1">
+                                                    ₹{vault.currentAmount.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
+                                                    <span className="text-lg text-gray-500"> / ₹{vault.targetAmount.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</span>
+                                                </p>
+                                            </div>
+
+                                            {/* Brutalist Progress Bar */}
+                                            <div className="mt-4">
+                                                <div className="flex justify-between text-xs font-bold font-mono mb-1 uppercase">
+                                                    <span>Progress</span>
+                                                    <span>{percentComplete.toFixed(1)}%</span>
+                                                </div>
+                                                <div className="h-6 w-full border-2 border-black bg-white p-0.5">
+                                                    <div
+                                                        className="h-full bg-black transition-all duration-500 ease-out"
+                                                        style={{ width: `${percentComplete}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {/* TOP SPENDING */}
@@ -185,7 +270,7 @@ export default function Home() {
                                             </div>
                                             <span className="font-bold uppercase tracking-wider">{item.category}</span>
                                         </div>
-                                        <span className="font-black text-lg">${item.amount}</span>
+                                        <span className="font-black text-lg">₹{item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                                     </div>
                                 ))}
                             </div>
@@ -252,38 +337,73 @@ export default function Home() {
                             </div>
                         </div>
                     </div>
+
+                    {/* RECENT LEDGER WIDGET */}
+                    <div className="brutalist-card mt-8 border-t-[8px] border-black">
+                        <div className="flex items-center justify-between mb-6 pb-2 border-b-4 border-black">
+                            <h2 className="text-2xl font-bold uppercase">Recent Ledger</h2>
+                            <span className="bg-black text-white px-3 py-1 font-bold text-sm uppercase">Live Sync</span>
+                        </div>
+
+                        <div className="space-y-3">
+                            {recentLedgerData.length === 0 ? (
+                                <p className="font-mono text-gray-500 uppercase">No recent transactions found.</p>
+                            ) : (
+                                recentLedgerData.slice(0, 5).map((t: any) => {
+                                    const shortId = t._id ? t._id.slice(-4).toUpperCase() : "ERR";
+                                    return (
+                                        <div key={t._id} className="flex flex-col md:flex-row md:items-center justify-between p-4 border-2 border-black bg-white group hover:bg-[#f4f4f4] transition-colors gap-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className="bg-black text-white font-mono font-bold px-2 py-1 text-sm border-2 border-transparent group-hover:border-black group-hover:bg-white group-hover:text-black transition-colors">
+                                                    #{shortId}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold uppercase tracking-wide text-lg">{t.description}</p>
+                                                    <p className="text-sm font-mono text-gray-600 uppercase">{new Date(t.date).toLocaleDateString()} // {t.category}</p>
+                                                </div>
+                                            </div>
+                                            <div className={`font-black text-2xl ${(t.category === 'Fixed' || t.category === 'Variable') ? 'text-black' : 'text-black'}`}>
+                                                {(t.category === 'Fixed' || t.category === 'Variable') ? '-' : '+'}₹{t.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                            </div>
+                                        </div>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </div>
+
                     {/* Padding at bottom to ensure scroll clears fixed area */}
                     <div className="h-8"></div>
                 </div>
             </main>
 
-            {/* AI CHAT AREA - Fixed bottom 25% for better visibility */}
-            <section className="h-[25vh] w-full bg-black text-white z-20 flex flex-col p-4 shadow-[0_-8px_0_0_rgba(0,0,0,1)] relative font-mono">
-                {/* Drawer Handle / Title */}
-                <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-black text-white border-2 border-black px-6 py-1 font-bold text-sm uppercase z-30 flex items-center gap-2">
+            {/* AI CHAT AREA - Responsive Sidecar */}
+            <section className={`h-full border-l-[4px] border-black bg-white flex flex-col font-mono relative z-20 transition-all duration-300 ${isChatOpen ? 'w-[30%] opacity-100' : 'w-0 opacity-0 overflow-hidden'}`}>
+                {/* Header */}
+                <div className="bg-black text-white border-b-[4px] border-black px-6 py-4 font-bold text-sm uppercase flex items-center gap-2">
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                     System // Terminal
                 </div>
 
-                <div className="flex-1 overflow-y-auto mb-4 pr-2 space-y-4 custom-scrollbar-dark mt-2">
+                <div className="flex-1 overflow-y-auto mb-4 p-4 space-y-4 custom-scrollbar text-black">
                     {messages.length === 0 && (
                         <div>
-                            <p className="text-gray-400">INITIATING SECURE CONNECTION...</p>
-                            <p className="text-gray-400">CONNECTION ESTABLISHED.</p>
-                            <p className="text-white mt-2">Awaiting command input...</p>
+                            <p className="text-gray-500 font-bold">INITIATING SECURE CONNECTION...</p>
+                            <p className="text-gray-500 font-bold">CONNECTION ESTABLISHED.</p>
+                            <p className="text-black font-bold mt-2">Awaiting command input...</p>
                         </div>
                     )}
                     {messages.map((msg, idx) => (
                         <div key={idx} className="flex flex-col">
                             {msg.role === 'user' ? (
-                                <div className="flex gap-2 text-gray-300">
-                                    <span className="font-bold whitespace-nowrap">{'>'} EXEC:</span>
+                                <div className="flex gap-2 text-black/80 font-bold">
+                                    <span className="whitespace-nowrap">{'>'} EXEC:</span>
                                     <span>{msg.content}</span>
                                 </div>
                             ) : (
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 text-black mt-2">
                                     <span className="font-bold whitespace-nowrap pt-1">{'['}SYS{']'}:</span>
-                                    <div className="bg-white text-black p-2 border-2 border-white shadow-brutalist-sm font-sans font-medium w-full md:w-fit max-w-[90%]">
+                                    <div className="bg-[#f4f4f4] text-black p-3 border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-sans font-bold w-full md:w-fit max-w-[90%]">
                                         {msg.content}
                                     </div>
                                 </div>
@@ -291,17 +411,17 @@ export default function Home() {
                         </div>
                     ))}
                     {isLoading && (
-                        <div className="flex gap-2 text-white items-center">
-                            <span className="font-bold whitespace-nowrap">{'['}SYS{']'}:</span>
-                            <span className="flex items-center gap-1 font-bold">
-                                PROCESSING <span className="inline-block w-3 h-5 bg-white animate-pulse"></span>
+                        <div className="flex gap-2 text-black items-center mt-2 font-bold whitespace-nowrap">
+                            <span>{'['}SYS{']'}:</span>
+                            <span className="flex items-center gap-1">
+                                PROCESSING <span className="inline-block w-3 h-5 bg-black animate-pulse"></span>
                             </span>
                         </div>
                     )}
                 </div>
 
-                <form onSubmit={handleSubmit} className="flex border-2 border-white bg-black focus-within:ring-2 focus-within:ring-white focus-within:ring-offset-2 focus-within:ring-offset-black transition-all">
-                    <div className="px-3 py-3 font-bold text-white flex items-center bg-transparent border-r-2 border-white">
+                <form onSubmit={handleSubmit} className="flex border-t-[4px] border-black bg-white focus-within:bg-[#f4f4f4] transition-all">
+                    <div className="px-4 py-4 font-black text-black flex items-center text-lg">
                         {'>'}
                     </div>
                     <input
@@ -309,18 +429,26 @@ export default function Home() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         placeholder="ENTER COMMAND..."
-                        className="flex-1 bg-transparent text-white uppercase text-sm placeholder-gray-500 p-3 focus:outline-none focus:ring-0"
+                        className="flex-1 bg-transparent text-black uppercase font-bold text-sm placeholder-gray-500 p-4 focus:outline-none focus:ring-0"
                         disabled={isLoading}
                     />
                     <button
                         type="submit"
                         disabled={isLoading || !input.trim()}
-                        className="bg-white text-black font-bold px-6 py-3 uppercase hover:bg-gray-200 active:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border-l-2 border-white"
+                        className="bg-black text-white font-bold px-6 py-4 uppercase hover:bg-[#FFDE00] hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center border-l-[4px] border-black"
                     >
                         Execute
                     </button>
                 </form>
             </section>
+
+            {/* Floating Action Button (Orb) */}
+            <button
+                onClick={() => setIsChatOpen(!isChatOpen)}
+                className={`fixed bottom-8 right-8 w-16 h-16 rounded-full border-[4px] border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-[#FFDE00] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all z-50 flex items-center justify-center ${isChatOpen ? 'bg-[#FFDE00]' : ''}`}
+            >
+                <MessageSquare className="w-7 h-7" />
+            </button>
         </div>
     );
 }
