@@ -1,38 +1,44 @@
 # Financial Agentic AI
 
-<p align="left">
-  <img src="https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js" />
-  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
-  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
-  <img src="https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Vercel AI SDK" />
-</p>
+<div align="left">
+  <img src="https://skillicons.dev/icons?i=nextjs,react,tailwind,ts,python,fastapi,mongodb" alt="Tech Stack" />
+</div>
 
 ## Description
 
-A powerful, agentic financial assistant and full-fledged personal financial dashboard built with a strict, high-contrast Neo-Brutalist design system. The application features a dynamic frontend providing real-time data visualizations (cash flow and expenses) powered by custom SVG charting patterns. Operating at the core is a terminal-hybrid AI chat interface acting as the command center for the financial planner. The agent actively parses commands, updates the local financial data context instantly, and simulates autonomous backend queries mapped directly to the dashboard state.
+A strictly deterministic, mathematically-sound autonomous financial assistant built across a decoupled microservice architecture. The ecosystem bridges a neo-brutalist Next.js dashboard with a fault-tolerant Python FastAPI backend natively powered by **LangGraph** and **ChatGroq**. The agent executes atomic operations securely against an Async MongoDB (Motor) state machine and a responsive Qdrant local Vector database ensuring robust AI semantic retrievals paired linearly against literal transaction ledgers without hallucinations over real-time **Server-Sent Events (SSE)**.
+
+## Screenshots
+*(Insert Screenshots Here)*
+
+![Dashboard GUI](docs/screenshot1.png)
+![Terminal Chat Interaction](docs/screenshot2.png)
+
+## Architecture
+
+The project represents a strict environment proxy utilizing server-side boundaries to drop native computation logic downstream:
+* **Frontend (Next.js App Router):** Operates entirely as a headless presentation layer utilizing raw Fetch streams natively mapping responses down to the exact DOM components bypassing standard REST caching dynamically.
+* **Backend (FastAPI & Uvicorn):** Powers asynchronous task resolution running entirely disconnected from the frontend explicitly validating environments cross-platform natively executing LangChain tool cascades on concurrent memory maps.
+* **Orchestration (LangGraph & Groq):** Employs explicit System-level instructions mapping strict Pydantic execution models over a multi-key AI configuration array capturing `HTTP 429` rate bumps continuously feeding inference via `.with_fallbacks()` logic safely into `llama-3.3-70b-versatile`.
+* **Data Integration (MongoDB & Qdrant):** Combines NoSQL ledger mathematics updating `userprofiles` and `transactions` perfectly tracking native arrays against qualitative HuggingFace semantic encodings via `all-MiniLM-L6-v2`.
+
+## All Features
+
+* **Multi-Key Fault Tolerant Intelligence:** Bypasses dynamic free-tier limits automatically dropping traffic across nested API-keys seamlessly resuming failed Langchain tool calls iteratively.
+* **Real-Time Terminal Pipeline (SSE):** Features explicit streaming capabilities reading binary chunks strictly processing text over standard TextDecoder React components mimicking true SSH terminals.
+* **Live Neo-Brutalist Dashboard Synching:** Directly injects dynamic React parameters re-spinning mathematical balances, Income graphs, and Savings components recursively natively the second the LLM finalizes background MongoDB modifications.
+* **RAG Semantic Embeddings:** Evaluates user histories conceptually identifying relationships (e.g. "How much do I spend casually?") by checking qualitative properties outside normal numerical parameters locally on Qdrant.
+* **Deterministic Transaction Fusing:** Operates under strict Python boundaries preventing the LLM from inventing transactions or "calculating sums" by manually locking its intelligence behind actual executable math functions accurately hitting `.find_one_and_update()`.
+* **Client Auto-Scrolling & Resets:** Integrates continuous smooth `useRef` React hooks alongside hardcoded terminal execution handlers gracefully intercepting edge functions like `clear`.
 
 ## Tech Stack
 
-*   **Next.js**: Framework for the web application architecture (App Router).
-*   **React**: UI component library for building the dashboard and terminal chat interface natively.
-*   **Tailwind CSS (v3)**: Core styling engine strictly configured for the monochrome, high-contrast Neo-Brutalist aesthetic.
-*   **Recharts**: Mathematical data visualization library utilized for high-contrast, step-based SVG pattern charts.
-*   **Lucide React**: Vector library providing sharp, minimalist iconography.
-*   **Vercel AI SDK**: Core AI integration library used to orchestrate tool definitions and the dialogue.
-*   **Ollama AI Provider**: Local LLM driver executing the core intelligence (using the local Llama 3.1 model).
-*   **TypeScript**: Ensures type safety across project components, dashboard states, and APIs.
-*   **Zod**: Validates structured outputs and function call parameters required by the language model.
-
-## Project Architecture
-
-The architecture is designed to reflect an autonomous financial workstation:
-
-1.  **Frontend Layout (`app/page.tsx`)**: 
-    A strictly structured, flexible React grid rendering a Neo-Brutalist dashboard. The upper viewport presents dynamic, high-contrast summary cards, categorized spending views, and custom SVG-patterned Rechart graphs. The lower viewport houses a sticky, terminal-hybrid AI agent command center simulating real-time system connections.
-2.  **State Management & Reactivity**:
-    The main client layer (`app/page.tsx`) maintains cohesive `useState` mapping for all mock financial entities (Summary, Top Spending, Plots). The interface executes simulated API parsing; when a user issues an intent-driven command via the AI Terminal (e.g., 'Add $50 to groceries'), the frontend dynamically intercepts the command, simulating an agentic API response, applying hard mathematical updates to the components, and executing the visual chart re-renders instantly without page loads.
-3.  **API Gateway & Orchestration Layer (`app/api/chat/route.ts`)**:
-    The hub managing asynchronous requests between the interface and the local intelligence provider. It injects rigorous procedural bounds via system prompts.
-4.  **Local Intelligence Engine**:
-    Vercel AI SDK interacting with a local Ollama daemon. The model acts upon tool calls and safely segregated backend mock logic (`lib/mockData.ts`), executing tasks, managing database states, and synthesizing final actions sent back to the terminal.
+* **Next.js & React 18**
+* **TypeScript**
+* **TailwindCSS & Recharts**
+* **Python 3 / FastAPI / Uvicorn**
+* **LangChain / LangGraph**
+* **Groq API / Llama 3.3 (70B)**
+* **MongoDB (Motor Asyncio)**
+* **Qdrant Vector Database**
+* **Sentence-Transformers (Hugging Face)**
