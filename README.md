@@ -42,3 +42,58 @@ The project represents a strict environment proxy utilizing server-side boundari
 * **MongoDB (Motor Asyncio)**
 * **Qdrant Vector Database**
 * **Sentence-Transformers (Hugging Face)**
+
+## Local Setup Instructions
+
+1. **Clone the Repository**
+   ```bash
+   git clone <repository-url>
+   cd Financial-Agentic-AI
+   ```
+
+2. **Frontend Initialization (Next.js)**
+   ```bash
+   npm install
+   # or
+   pnpm install
+   ```
+
+3. **Backend Virtual Environment (FastAPI/Python)**
+   ```bash
+   # Assuming you are at the root
+   python -m venv venv
+   
+   # Activate Environment 
+   # Windows: .\venv\Scripts\activate
+   # Mac/Linux: source venv/bin/activate
+   
+   pip install -r backend/requirements.txt
+   ```
+
+4. **Environment Variables Configuration**
+   - Head to the `backend/` directory and explicitly create a `.env` file targeting your remote instances:
+   ```env
+   # Storage Backends
+   MONGODB_URI="mongodb+srv://<your-cluster-string>..."
+   MONGO_DB_NAME="financial_agent_db"
+   
+   # Multi-Key Fault Tolerant Fallbacks
+   GROQ_API_KEY_1="gsk_real_key_here..."
+   GROQ_API_KEY_2="gsk_secondary_key..." # Optional bypass
+   GROQ_API_KEY_3="gsk_third_key..."    # Optional bypass
+   
+   # CORS Permissions
+   FRONTEND_URL="http://localhost:3000"
+   ```
+
+5. **Deploy Core Runtimes**
+   ```bash
+   # Terminal 1: Spin up Next.js Edge Router
+   npm run dev
+   
+   # Terminal 2: Initialize Uvicorn Vector Backend
+   # From the root directory:
+   python -m uvicorn backend.main:app --reload
+   ```
+
+Navigate immediately to `http://localhost:3000` upon boot completion to interact with the LLM.
