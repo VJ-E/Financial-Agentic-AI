@@ -1,0 +1,27 @@
+Traceback (most recent call last):
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\backend\routers\finance.py", line 40, in seed_data
+    await fund_goal.ainvoke({"user_id": user_id, "goal_short_id": g["shortId"], "amount": 12000.0})
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\venv\Lib\site-packages\langchain_core\tools\structured.py", line 70, in ainvoke
+    return await super().ainvoke(input, config, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\venv\Lib\site-packages\langchain_core\tools\base.py", line 652, in ainvoke
+    return await self.arun(tool_input, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\venv\Lib\site-packages\langchain_core\tools\base.py", line 1131, in arun
+    raise error_to_raise
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\venv\Lib\site-packages\langchain_core\tools\base.py", line 1085, in arun
+    tool_args, tool_kwargs = self._to_args_and_kwargs(tool_input, tool_call_id)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\venv\Lib\site-packages\langchain_core\tools\base.py", line 862, in _to_args_and_kwargs
+    tool_input = self._parse_input(tool_input, tool_call_id)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\venv\Lib\site-packages\langchain_core\tools\base.py", line 711, in _parse_input
+    result = input_args.model_validate(tool_input)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ubuntuStuff\Projects\Financial-Agentic-AI\venv\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for fund_goal
+short_id
+  Field required [type=missing, input_value={'user_id': 'user_123', '...74M', 'amount': 12000.0}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
