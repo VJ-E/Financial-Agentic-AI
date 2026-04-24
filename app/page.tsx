@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare } from 'lucide-react';
 
@@ -28,6 +28,12 @@ export default function Home() {
     const [isLoading, setIsLoading] = useState(false);
     const [isPageLoading, setIsPageLoading] = useState(true);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll to bottom of chat
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
 
     // Dynamic State mapped to Backend
     const [summaryData, setSummaryData] = useState(fallbackSummaryData);
@@ -116,6 +122,13 @@ export default function Home() {
         e.preventDefault();
         if (!input.trim() || isLoading) return;
 
+        // Implement CLEAR terminal command
+        if (input.trim().toLowerCase() === "clear") {
+            setMessages([]);
+            setInput("");
+            return;
+        }
+
         const userMsg: Message = { role: "user", content: input };
         const newMessages = [...messages, userMsg];
         setMessages(newMessages);
@@ -132,10 +145,34 @@ export default function Home() {
 
             if (!response.ok) throw new Error("Agent failed to respond.");
 
-            const data = await response.json();
+            // Append empty assistant message for streaming
+            setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
-            // Apply the AI's textual response
-            setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+            if (response.body) {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunkText = decoder.decode(value, { stream: true });
+                    const lines = chunkText.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataText = line.substring(6);
+                            setMessages((prev) => {
+                                const lastMsg = prev[prev.length - 1];
+                                return [
+                                    ...prev.slice(0, -1),
+                                    { ...lastMsg, content: lastMsg.content + dataText }
+                                ];
+                            });
+                        }
+                    }
+                }
+            }
 
             // CRITICAL: Force the dashboard to securely pull the new mathematical truth from MongoDB
             await fetchDashboardData();
@@ -418,6 +455,7 @@ export default function Home() {
                             </span>
                         </div>
                     )}
+                    <div ref={messagesEndRef} />
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex border-t-[4px] border-black bg-white focus-within:bg-[#f4f4f4] transition-all">
