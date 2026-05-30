@@ -9,6 +9,15 @@ export async function GET() {
             cache: 'no-store'
         });
 
+        if (!response.ok) {
+            const text = await response.text();
+            console.error("Finance API Proxy Error (Non-200):", text);
+            return NextResponse.json(
+                { success: false, message: "Backend returned an error.", details: text },
+                { status: response.status }
+            );
+        }
+
         const payload = await response.json();
 
         // FastAPI returns { success: true, data: { profile, recentTransactions } }

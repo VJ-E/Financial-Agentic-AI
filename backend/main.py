@@ -29,11 +29,8 @@ app = FastAPI(
 # Configure CORS so the Next.js frontend can communicate with the backend
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-# Note: We temporarily allow "*" to ensure no Render-to-Vercel origin blocking 
-# drops packets during initial cluster setup. This should be securely locked 
-# down purely to `FRONTEND_URL` after Vercel assigns the final deployment URL.
+# Restrict to strictly `FRONTEND_URL` for secure Vercel deployment origin checking.
 origins = [
-    "*",
     FRONTEND_URL
 ]
 
@@ -48,9 +45,16 @@ app.add_middleware(
 app.include_router(finance.router)
 app.include_router(chat.router)
 
+from backend.db.vector import get_qdrant_client
+
 @app.get("/health", tags=["Health"])
 async def health_check():
     """
-    Simple health check endpoint.
+    Simple health check endpoint that also pings Qdrant to keep it awake.
     """
-    return {"status": "ok"}
+    try:
+        client = get_qdrant_client()
+        client.get_collections()
+        return {"status": "ok", "qdrant": "awake"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
