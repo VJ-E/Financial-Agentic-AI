@@ -40,20 +40,6 @@ CRITICAL RULES:
 9. The default currency for all transactions, balances, and advice is the Indian Rupee (INR / ₹). Never refer to dollars or $.
 """
 
-# 1. Setup the LLM and Bind Tools
-# We specify the advanced 70b model, robust at accurately calling multiple tools.
-# Implement fault tolerance bypassing free-tier rate limits via multi-key iterations.
-groq_keys = [
-    os.getenv("GROQ_API_KEY_1", os.getenv("GROQ_API_KEY")),
-    os.getenv("GROQ_API_KEY_2"),
-    os.getenv("GROQ_API_KEY_3")
-]
-valid_keys = [k for k in groq_keys if k]
-if not valid_keys:
-    valid_keys = ["missing_key"]
-
-llms = [ChatGroq(api_key=key, model="llama-3.3-70b-versatile", temperature=0) for key in valid_keys]
-
 tools = [
     get_financial_data,
     add_transaction,
@@ -64,16 +50,6 @@ tools = [
     search_history
 ]
 
-# Note: Fallbacks on bound tools are processed significantly more securely natively 
-# executing binding sequentially on each engine before compiling the chain.
-llms_with_tools = [llm.bind_tools(tools) for llm in llms]
-primary_llm = llms_with_tools[0]
-
-if len(llms_with_tools) > 1:
-    llm_with_tools = primary_llm.with_fallbacks(llms_with_tools[1:])
-else:
-    llm_with_tools = primary_llm
-
 # 2. Define the Nodes
 def chatbot(state: AgentState):
     """
@@ -81,6 +57,29 @@ def chatbot(state: AgentState):
     with strictly bound system parameters.
     """
     messages = state["messages"]
+    
+    frontend_keys = state.get("api_keys", [])
+    valid_keys = [k for k in frontend_keys if k.strip()]
+    
+    if not valid_keys:
+        # Fallback to backend environment variables if frontend didn't supply any
+        groq_keys = [
+            os.getenv("GROQ_API_KEY_1", os.getenv("GROQ_API_KEY")),
+            os.getenv("GROQ_API_KEY_2"),
+            os.getenv("GROQ_API_KEY_3")
+        ]
+        valid_keys = [k for k in groq_keys if k]
+        if not valid_keys:
+            valid_keys = ["missing_key"]
+
+    llms = [ChatGroq(api_key=key, model="llama-3.3-70b-versatile", temperature=0) for key in valid_keys]
+    llms_with_tools = [llm.bind_tools(tools) for llm in llms]
+    primary_llm = llms_with_tools[0]
+
+    if len(llms_with_tools) > 1:
+        llm_with_tools = primary_llm.with_fallbacks(llms_with_tools[1:])
+    else:
+        llm_with_tools = primary_llm
     
     # Prepend the strict system instructions right before evaluating new outputs 
     # guaranteeing rules are prioritized effectively alongside generic memory.

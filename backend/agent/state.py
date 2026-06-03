@@ -10,3 +10,4 @@ class AgentState(TypedDict):
     append messages to the list instead of overwriting the previous state exactly.
     """
     messages: Annotated[list[AnyMessage], add_messages]
+    api_keys: list[str]
