@@ -8,6 +8,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import android.content.Context
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class GPayListenerService : NotificationListenerService() {
 
@@ -19,6 +23,14 @@ class GPayListenerService : NotificationListenerService() {
     private val API_KEY = BuildConfig.API_KEY
 
     private val client = OkHttpClient()
+
+    private fun appendLog(message: String) {
+        val prefs = applicationContext.getSharedPreferences("GPayLogs", Context.MODE_PRIVATE)
+        val currentLogs = prefs.getString("logs", "") ?: ""
+        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        val newLog = "[$time] $message\n$currentLogs"
+        prefs.edit().putString("logs", newLog.take(2000)).apply() // keep last 2000 chars
+    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         // We now process notifications from any app (like SMS for KVB bank)
@@ -34,13 +46,12 @@ class GPayListenerService : NotificationListenerService() {
         val parsed = parseTransaction(fullText)
         if (parsed == null) {
             if (fullText.contains("debited", ignoreCase = true) || fullText.contains("Rs.", ignoreCase = true) || fullText.contains("Paid", ignoreCase = true)) {
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(applicationContext, "Failed to parse: $fullText", android.widget.Toast.LENGTH_LONG).show()
-                }
+                appendLog("Failed to parse regex: $fullText")
             }
             return
         }
 
+        appendLog("Parsed: Rs ${parsed.first} to ${parsed.second}")
         postTransaction(parsed.first, parsed.second)
     }
 
@@ -74,9 +85,7 @@ class GPayListenerService : NotificationListenerService() {
 
         // Check if BACKEND_URL is valid before proceeding
         if (BACKEND_URL.isBlank()) {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(applicationContext, "Error: BACKEND_URL is empty! Check GitHub Secrets.", android.widget.Toast.LENGTH_LONG).show()
-            }
+            appendLog("ERROR: BACKEND_URL is empty! Check GitHub Secrets.")
             return
         }
 
@@ -88,20 +97,14 @@ class GPayListenerService : NotificationListenerService() {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(applicationContext, "Failed to connect to backend: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                }
+                appendLog("Network Fail: ${e.message}")
             }
 
             override fun onResponse(call: Call, response: Response) {
                 if (response.isSuccessful) {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(applicationContext, "Logged Rs $amount to $merchant successfully!", android.widget.Toast.LENGTH_LONG).show()
-                    }
+                    appendLog("Success: POSTed Rs $amount to $merchant")
                 } else {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(applicationContext, "Backend rejected transaction: ${response.code}", android.widget.Toast.LENGTH_LONG).show()
-                    }
+                    appendLog("Server Error: ${response.code} rejected transaction")
                 }
                 response.close()
             }
