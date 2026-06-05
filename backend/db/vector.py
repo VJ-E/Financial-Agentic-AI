@@ -2,9 +2,9 @@ import os
 import hashlib
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
+import google.generativeai as genai
 
 _client = None
-_encoder = None
 
 def get_qdrant_client():
     global _client
@@ -17,14 +17,17 @@ def get_qdrant_client():
             _client = QdrantClient(path="local_qdrant")
     return _client
 
-def get_encoder():
-    global _encoder
-    if _encoder is None:
-        from sentence_transformers import SentenceTransformer
-        _encoder = SentenceTransformer('all-MiniLM-L6-v2')
-    return _encoder
+def get_embedding(text: str, task_type: str = "retrieval_document") -> list[float]:
+    """Generates a 768-dimensional embedding using Google Gemini (0MB local RAM)."""
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    result = genai.embed_content(
+        model="models/text-embedding-004",
+        content=text,
+        task_type=task_type
+    )
+    return result['embedding']
 
-COLLECTION_NAME = "transactions"
+COLLECTION_NAME = "transactions_v2"
 
 def init_qdrant():
     """Ensure the Qdrant collection exists and matches the encoder's dimensions."""
@@ -36,7 +39,7 @@ def init_qdrant():
         client.create_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=models.VectorParams(
-                size=384,  # all-MiniLM-L6-v2 generates 384-dimensional vectors
+                size=768,  # Gemini text-embedding-004 generates 768-dimensional vectors
                 distance=models.Distance.COSINE
             )
         )
@@ -47,8 +50,7 @@ def init_qdrant():
 def upsert_transaction(user_id: str, tx_id: str, description: str, amount: float, category: str, date: str):
     """Embeds the transaction description and upserts the vector into Qdrant."""
     client = get_qdrant_client()
-    encoder = get_encoder()
-    vector = encoder.encode(description).tolist()
+    vector = get_embedding(description, task_type="retrieval_document")
     
     # Qdrant requires unsigned integer IDs natively. Hashes tx_id.
     qdrant_id = int(hashlib.sha256(tx_id.encode('utf-8')).hexdigest(), 16) % ((1 << 63) - 1)
@@ -74,8 +76,7 @@ def upsert_transaction(user_id: str, tx_id: str, description: str, amount: float
 def semantic_search(user_id: str, query: str, limit: int = 5):
     """Searches Qdrant for similar vectors constrained to the specific user_id."""
     client = get_qdrant_client()
-    encoder = get_encoder()
-    query_vector = encoder.encode(query).tolist()
+    query_vector = get_embedding(query, task_type="retrieval_query")
     
     hits = client.search(
         collection_name=COLLECTION_NAME,
