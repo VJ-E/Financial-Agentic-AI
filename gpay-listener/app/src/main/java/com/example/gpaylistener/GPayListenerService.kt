@@ -70,6 +70,26 @@ class GPayListenerService : NotificationListenerService() {
             return
         }
 
+        // --- DEDUPLICATION LOGIC ---
+        // If bank and GPay both notify within 60s, ignore the second one
+        val prefs = applicationContext.getSharedPreferences("GPayLogs", Context.MODE_PRIVATE)
+        val lastAmount = prefs.getFloat("last_amount", -1f)
+        val lastType = prefs.getString("last_type", "")
+        val lastTime = prefs.getLong("last_time", 0L)
+        val currentTime = System.currentTimeMillis()
+
+        if (parsed.first.toFloat() == lastAmount && parsed.third == lastType && (currentTime - lastTime) < 60000) {
+            appendLog("Ignored duplicate notification: Rs ${parsed.first} (${parsed.third})")
+            return
+        }
+
+        prefs.edit()
+            .putFloat("last_amount", parsed.first.toFloat())
+            .putString("last_type", parsed.third)
+            .putLong("last_time", currentTime)
+            .apply()
+        // --------------------------
+
         appendLog("Parsed: Rs ${parsed.first} ${if(parsed.third == "income") "from" else "to"} ${parsed.second}")
         postTransaction(parsed.first, parsed.second, parsed.third)
     }
