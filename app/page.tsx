@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare } from 'lucide-react';
+import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key } from 'lucide-react';
 
 type Message = {
     role: "user" | "assistant";
@@ -28,6 +28,8 @@ export default function Home() {
     const [isLoading, setIsLoading] = useState(false);
     const [isPageLoading, setIsPageLoading] = useState(true);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [apiKeys, setApiKeys] = useState<string[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom of chat
@@ -115,6 +117,10 @@ export default function Home() {
 
     useEffect(() => {
         fetchDashboardData();
+        const storedKeys = localStorage.getItem("gpay_agent_api_keys");
+        if (storedKeys) {
+            try { setApiKeys(JSON.parse(storedKeys)); } catch(e) {}
+        }
     }, []);
 
 
@@ -140,7 +146,7 @@ export default function Home() {
             const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ messages: newMessages }),
+                body: JSON.stringify({ messages: newMessages, api_keys: apiKeys }),
             });
 
             if (!response.ok) throw new Error("Agent failed to respond.");
@@ -216,6 +222,9 @@ export default function Home() {
                             </button>
                             <button className="brutalist-button flex items-center gap-2">
                                 <Plus className="w-5 h-5" /> Add Funds
+                            </button>
+                            <button onClick={() => setIsSettingsOpen(true)} className="brutalist-button flex items-center justify-center !px-3">
+                                <Settings className="w-5 h-5" />
                             </button>
                         </div>
                     </header>
@@ -487,6 +496,70 @@ export default function Home() {
             >
                 <MessageSquare className="w-7 h-7" />
             </button>
+
+            {/* SETTINGS MODAL */}
+            {isSettingsOpen && (
+                <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white border-8 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] w-full max-w-4xl h-[600px] flex flex-col md:flex-row relative">
+                        <button onClick={() => setIsSettingsOpen(false)} className="absolute top-4 right-4 z-10 bg-black text-white hover:bg-[#FFDE00] hover:text-black transition-colors p-1 border-2 border-transparent hover:border-black">
+                            <X className="w-6 h-6" />
+                        </button>
+                        
+                        <div className="w-full md:w-1/3 border-b-4 md:border-b-0 md:border-r-4 border-black bg-[#f4f4f4] p-6">
+                            <h2 className="text-3xl font-black uppercase mb-8 border-b-4 border-black pb-2">Settings</h2>
+                            <div className="space-y-2">
+                                <button className="w-full flex items-center gap-3 p-3 bg-black text-white font-bold uppercase tracking-wider">
+                                    <Key className="w-5 h-5" /> API Keys
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="w-full md:w-2/3 p-6 md:p-8 overflow-y-auto">
+                            <h3 className="text-2xl font-black uppercase mb-2">Groq API Keys</h3>
+                            <p className="font-mono text-sm text-gray-600 mb-6">Enter fallback keys to bypass rate limits during heavy usage. Saved locally.</p>
+                            
+                            <div className="space-y-4">
+                                {apiKeys.map((key, index) => (
+                                    <div key={index} className="flex items-center gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={key} 
+                                            onChange={(e) => {
+                                                const newKeys = [...apiKeys];
+                                                newKeys[index] = e.target.value;
+                                                setApiKeys(newKeys);
+                                                localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
+                                            }}
+                                            placeholder="gsk_..." 
+                                            className="flex-1 p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
+                                        />
+                                        <button 
+                                            onClick={() => {
+                                                const newKeys = apiKeys.filter((_, i) => i !== index);
+                                                setApiKeys(newKeys);
+                                                localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
+                                            }}
+                                            className="bg-black text-white p-3 border-4 border-black hover:bg-red-500 hover:text-black transition-colors font-bold uppercase"
+                                        >
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button 
+                                    onClick={() => {
+                                        const newKeys = [...apiKeys, ""];
+                                        setApiKeys(newKeys);
+                                        localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
+                                    }}
+                                    className="brutalist-button w-full flex items-center justify-center gap-2"
+                                >
+                                    <Plus className="w-5 h-5" /> Add Another Key
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
     try {
-        const { messages } = await req.json();
+        const { messages, api_keys } = await req.json();
 
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             return NextResponse.json({ error: "Messages array is required" }, { status: 400 });
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ messages })
+            body: JSON.stringify({ messages, api_keys: api_keys || [] })
         });
 
         return new Response(response.body, {
