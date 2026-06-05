@@ -16,8 +16,8 @@ class GPayListenerService : NotificationListenerService() {
 
     // Your backend URL — change this to your deployed or local IP
     // Ensure you update YOUR_BACKEND_URL to the correct IP if running locally
-    private val BACKEND_URL = "http://10.0.2.2:8000/finance/ingest" 
-    private val API_KEY = "your-secret-key-here"  // must match backend
+    private val BACKEND_URL = "https://financial-agentic-ai.onrender.com/finance/ingest" 
+    private val API_KEY = "12345671"  // must match backend
 
     private val client = OkHttpClient()
 
