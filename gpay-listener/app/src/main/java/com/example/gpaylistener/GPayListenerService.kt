@@ -31,7 +31,15 @@ class GPayListenerService : NotificationListenerService() {
         // Combine title + text + bigText for broader matching
         val fullText = "$title $text $bigText"
 
-        val parsed = parseTransaction(fullText) ?: return
+        val parsed = parseTransaction(fullText)
+        if (parsed == null) {
+            if (fullText.contains("debited", ignoreCase = true) || fullText.contains("Rs.", ignoreCase = true) || fullText.contains("Paid", ignoreCase = true)) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(applicationContext, "Failed to parse: $fullText", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+            return
+        }
 
         postTransaction(parsed.first, parsed.second)
     }
@@ -44,7 +52,7 @@ class GPayListenerService : NotificationListenerService() {
         // Pattern 3: "Payment of ₹450 to Swiggy successful"
         val pattern3 = Regex("""[Pp]ayment of\s*₹([\d,]+\.?\d*)\s+to\s+(.+?)\s+successful""")
         // Pattern 4: KVB Bank SMS ("debited Rs. 1.00 on 05-Jun-2026 to DHINAKARAN info")
-        val pattern4 = Regex("""debited Rs\.?\s*([\d,]+\.?\d*).*?to\s+([A-Za-z0-9\s]+?)\s+info""")
+        val pattern4 = Regex("""debited\s*(?:Rs\.?|INR)\s*([\d,]+\.?\d*).*?to\s+([A-Za-z0-9\s]+?)\s+info""", RegexOption.IGNORE_CASE)
 
         for (pattern in listOf(pattern1, pattern2, pattern3, pattern4)) {
             val match = pattern.find(text) ?: continue
