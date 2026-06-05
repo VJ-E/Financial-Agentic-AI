@@ -18,8 +18,19 @@ android {
         if (project.rootProject.file("local.properties").exists()) {
             properties.load(project.rootProject.file("local.properties").newDataInputStream())
         }
-        buildConfigField "String", "BACKEND_URL", "\"${properties.getProperty('BACKEND_URL', 'http://10.0.2.2:8000/finance/ingest')}\""
-        buildConfigField "String", "API_KEY", "\"${properties.getProperty('API_KEY', 'default_key')}\""
+        
+        def backendUrl = properties.getProperty('BACKEND_URL')
+        if (backendUrl == null || backendUrl.trim().isEmpty()) {
+            backendUrl = "http://10.0.2.2:8000/finance/ingest"
+        }
+        
+        def apiKey = properties.getProperty('API_KEY')
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            apiKey = "default_key"
+        }
+
+        buildConfigField "String", "BACKEND_URL", "\"${backendUrl}\""
+        buildConfigField "String", "API_KEY", "\"${apiKey}\""
     }
     
     buildFeatures {

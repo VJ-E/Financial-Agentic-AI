@@ -24,11 +24,12 @@ class GPayListenerService : NotificationListenerService() {
         // We now process notifications from any app (like SMS for KVB bank)
 
         val extras = sbn.notification.extras
-        val title = extras.getString(Notification.EXTRA_TITLE) ?: ""
-        val text = extras.getString(Notification.EXTRA_TEXT) ?: ""
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
 
-        // Combine title + text for broader matching
-        val fullText = "$title $text"
+        // Combine title + text + bigText for broader matching
+        val fullText = "$title $text $bigText"
 
         val parsed = parseTransaction(fullText) ?: return
 
@@ -63,6 +64,14 @@ class GPayListenerService : NotificationListenerService() {
 
         val body = json.toString().toRequestBody("application/json".toMediaType())
 
+        // Check if BACKEND_URL is valid before proceeding
+        if (BACKEND_URL.isBlank()) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(applicationContext, "Error: BACKEND_URL is empty! Check GitHub Secrets.", android.widget.Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
         val request = Request.Builder()
             .url(BACKEND_URL)
             .addHeader("X-API-Key", API_KEY)
@@ -71,12 +80,22 @@ class GPayListenerService : NotificationListenerService() {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                // Silent fail — transaction was not logged
-                // Optional: save to local queue and retry later
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(applicationContext, "Failed to connect to backend: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
-                // Transaction logged successfully
+                if (response.isSuccessful) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(applicationContext, "Logged Rs $amount to $merchant successfully!", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(applicationContext, "Backend rejected transaction: ${response.code}", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+                response.close()
             }
         })
     }
