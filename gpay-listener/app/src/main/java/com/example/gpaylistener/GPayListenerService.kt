@@ -38,6 +38,16 @@ class GPayListenerService : NotificationListenerService() {
         prefs.edit().putString("logs", newLog.take(2000)).apply() // keep last 2000 chars
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        appendLog("SERVICE BIND SUCCESS: Listening to notifications...")
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        appendLog("SERVICE DISCONNECTED by Android OS.")
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         // We now process notifications from any app (like SMS for KVB bank)
 
@@ -51,8 +61,11 @@ class GPayListenerService : NotificationListenerService() {
 
         val parsed = parseTransaction(fullText)
         if (parsed == null) {
-            if (fullText.contains("debited", ignoreCase = true) || fullText.contains("credited", ignoreCase = true) || fullText.contains("Rs.", ignoreCase = true) || fullText.contains("Paid", ignoreCase = true)) {
-                appendLog("Failed to parse regex: $fullText")
+            val lowerText = fullText.lowercase()
+            if (lowerText.contains("debited") || lowerText.contains("credited") || 
+                lowerText.contains("rs.") || lowerText.contains("paid") || 
+                lowerText.contains("kvb") || lowerText.contains("upi") || lowerText.contains("sent")) {
+                appendLog("Failed to parse regex [${sbn.packageName}]: $fullText")
             }
             return
         }
