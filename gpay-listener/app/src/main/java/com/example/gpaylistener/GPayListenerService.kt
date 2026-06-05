@@ -13,6 +13,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import java.util.concurrent.TimeUnit
+
 class GPayListenerService : NotificationListenerService() {
 
     // GPay's package name — do not change
@@ -22,7 +24,11 @@ class GPayListenerService : NotificationListenerService() {
     private val BACKEND_URL = BuildConfig.BACKEND_URL 
     private val API_KEY = BuildConfig.API_KEY
 
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(180, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
+        .writeTimeout(180, TimeUnit.SECONDS)
+        .build()
 
     private fun appendLog(message: String) {
         val prefs = applicationContext.getSharedPreferences("GPayLogs", Context.MODE_PRIVATE)
@@ -45,18 +51,19 @@ class GPayListenerService : NotificationListenerService() {
 
         val parsed = parseTransaction(fullText)
         if (parsed == null) {
-            if (fullText.contains("debited", ignoreCase = true) || fullText.contains("Rs.", ignoreCase = true) || fullText.contains("Paid", ignoreCase = true)) {
+            if (fullText.contains("debited", ignoreCase = true) || fullText.contains("credited", ignoreCase = true) || fullText.contains("Rs.", ignoreCase = true) || fullText.contains("Paid", ignoreCase = true)) {
                 appendLog("Failed to parse regex: $fullText")
             }
             return
         }
 
-        appendLog("Parsed: Rs ${parsed.first} to ${parsed.second}")
-        postTransaction(parsed.first, parsed.second)
+        appendLog("Parsed: Rs ${parsed.first} ${if(parsed.third == "income") "from" else "to"} ${parsed.second}")
+        postTransaction(parsed.first, parsed.second, parsed.third)
     }
 
-    private fun parseTransaction(text: String): Pair<Double, String>? {
-        // Pattern 1: "Paid ₹450 to Swiggy" or "You paid ₹1,200 to Zomato"
+    private fun parseTransaction(text: String): Triple<Double, String, String>? {
+        // --- OUTGOING (EXPENSE) ---
+        // Pattern 1: "Paid ₹450 to Swiggy"
         val pattern1 = Regex("""[Pp]aid?\s*₹([\d,]+\.?\d*)\s+to\s+(.+)""")
         // Pattern 2: "₹450 sent to Swiggy"
         val pattern2 = Regex("""₹([\d,]+\.?\d*)\s+sent to\s+(.+)""")
@@ -69,16 +76,36 @@ class GPayListenerService : NotificationListenerService() {
             val match = pattern.find(text) ?: continue
             val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: continue
             val merchant = match.groupValues[2].trim()
-            return Pair(amount, merchant)
+            return Triple(amount, merchant, "expense")
         }
 
-        return null  // Notification didn't match — skip it
+        // --- INCOMING (INCOME) ---
+        // Pattern 5: GPay Incoming ("DHINAKARAN paid you ₹2.00")
+        val pattern5 = Regex("""([A-Za-z0-9\s]+?)\s+paid you\s*₹([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE)
+        // Pattern 6: KVB Bank Incoming ("credited Rs. 2.00 from DHINAKARAN")
+        val pattern6 = Regex("""credited\s*(?:Rs\.?|INR)\s*([\d,]+\.?\d*).*?from\s+([A-Za-z0-9\s]+?)\s+on""", RegexOption.IGNORE_CASE)
+
+        for (pattern in listOf(pattern5)) {
+            val match = pattern.find(text) ?: continue
+            val merchant = match.groupValues[1].trim()
+            val amount = match.groupValues[2].replace(",", "").toDoubleOrNull() ?: continue
+            return Triple(amount, merchant, "income")
+        }
+        for (pattern in listOf(pattern6)) {
+            val match = pattern.find(text) ?: continue
+            val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: continue
+            val merchant = match.groupValues[2].trim()
+            return Triple(amount, merchant, "income")
+        }
+
+        return null
     }
 
-    private fun postTransaction(amount: Double, merchant: String) {
+    private fun postTransaction(amount: Double, merchant: String, type: String) {
         val json = JSONObject().apply {
             put("merchant", merchant)
             put("amount", amount)
+            put("type", type)
         }
 
         val body = json.toString().toRequestBody("application/json".toMediaType())

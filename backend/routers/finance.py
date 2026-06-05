@@ -31,14 +31,18 @@ async def ingest_gpay_transaction(
 
     merchant = payload.get("merchant", "Unknown")
     amount = payload.get("amount", 0.0)
+    txn_type = payload.get("type", "expense")
 
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
-    # Auto-categorise by merchant name
-    fixed_keywords = ["rent", "electricity", "jio", "airtel", "emi",
-                      "insurance", "wifi", "bsnl", "broadband", "bescom"]
-    category = "Fixed" if any(k in merchant.lower() for k in fixed_keywords) else "Variable"
+    if txn_type == "income":
+        category = "Income"
+    else:
+        # Auto-categorise by merchant name
+        fixed_keywords = ["rent", "electricity", "jio", "airtel", "emi",
+                          "insurance", "wifi", "bsnl", "broadband", "bescom"]
+        category = "Fixed" if any(k in merchant.lower() for k in fixed_keywords) else "Variable"
 
     # Reuse the existing tool — no duplicate logic
     result = await add_transaction.ainvoke({
