@@ -47,7 +47,12 @@ export default function Home() {
 
     const fetchDashboardData = async () => {
         try {
-            const res = await fetch("/api/finance");
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+            const res = await fetch("/api/finance", { signal: controller.signal });
+            clearTimeout(timeoutId);
+            
             if (!res.ok) throw new Error("Failed to fetch dashboard data");
             const data = await res.json();
 

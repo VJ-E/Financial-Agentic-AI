@@ -47,7 +47,7 @@ app.include_router(chat.router)
 
 from backend.db.vector import get_qdrant_client
 
-@app.get("/health", tags=["Health"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["Health"])
 async def health_check():
     """
     Simple health check endpoint that also pings Qdrant to keep it awake.

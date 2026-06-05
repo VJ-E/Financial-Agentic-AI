@@ -26,6 +26,11 @@ jobs:
       with:
         gradle-version: '8.2'
 
+    - name: Create local.properties for Secrets
+      run: |
+        echo "BACKEND_URL=${{ secrets.BACKEND_URL }}" >> gpay-listener/local.properties
+        echo "API_KEY=${{ secrets.API_KEY }}" >> gpay-listener/local.properties
+
     - name: Build APK with Gradle
       run: |
         cd gpay-listener
