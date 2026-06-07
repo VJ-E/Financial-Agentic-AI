@@ -15,6 +15,10 @@ import android.net.Uri
 import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.widget.Toast
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.ExistingPeriodicWorkPolicy
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -57,6 +61,14 @@ class MainActivity : AppCompatActivity() {
             }
             startActivity(intent)
         }
+
+        // Schedule the Heartbeat Worker
+        val workRequest = PeriodicWorkRequestBuilder<RebindWorker>(15, TimeUnit.MINUTES).build()
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "ListenerHeartbeat",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
     }
 
     override fun onResume() {
