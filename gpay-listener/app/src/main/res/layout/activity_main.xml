@@ -19,6 +19,15 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Enable Notification Access"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/btnRebind"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Force Restart Listener"
+        android:backgroundTint="#FF0000"
+        android:textColor="#FFFFFF"
         android:layout_marginBottom="16dp"/>
 
     <TextView

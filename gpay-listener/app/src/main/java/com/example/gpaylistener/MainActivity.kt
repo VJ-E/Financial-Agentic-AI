@@ -12,6 +12,9 @@ import android.os.Looper
 import android.widget.TextView
 import android.os.PowerManager
 import android.net.Uri
+import android.content.ComponentName
+import android.service.notification.NotificationListenerService
+import android.widget.Toast
 
 class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -34,6 +37,16 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnEnable).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+
+        findViewById<Button>(R.id.btnRebind).setOnClickListener {
+            try {
+                val componentName = ComponentName(applicationContext, GPayListenerService::class.java)
+                NotificationListenerService.requestRebind(componentName)
+                Toast.makeText(this, "Requested OS to restart listener!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Failed to rebind: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
 
         // Check Battery Optimization
