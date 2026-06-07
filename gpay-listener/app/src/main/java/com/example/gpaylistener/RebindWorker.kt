@@ -6,6 +6,7 @@ import android.service.notification.NotificationListenerService
 import android.util.Log
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import android.content.pm.PackageManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -14,12 +15,27 @@ class RebindWorker(appContext: Context, workerParams: WorkerParameters) : Worker
 
     override fun doWork(): Result {
         try {
-            // Ping the Android OS to forcibly rebind the NotificationListenerService
             val componentName = ComponentName(applicationContext, GPayListenerService::class.java)
+            val pm = applicationContext.packageManager
+            
+            // 1. Physically disable the service component (Forces Android to unbind)
+            pm.setComponentEnabledSetting(
+                componentName,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            
+            // 2. Re-enable the service component
+            pm.setComponentEnabledSetting(
+                componentName,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            
+            // 3. Ask for a rebind just to be safe
             NotificationListenerService.requestRebind(componentName)
             
-            // Log it so the user can verify the heartbeat is working
-            appendLog("HEARTBEAT: WorkManager requested OS rebind")
+            appendLog("HEARTBEAT: Hard-toggled service component to bypass OS death")
             Log.d("RebindWorker", "Successfully requested rebind.")
             return Result.success()
         } catch (e: Exception) {
