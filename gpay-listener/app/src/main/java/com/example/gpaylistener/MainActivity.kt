@@ -10,6 +10,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView
+import android.os.PowerManager
+import android.net.Uri
 
 class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -32,6 +34,15 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnEnable).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+
+        // Check Battery Optimization
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
         }
     }
 
