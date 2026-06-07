@@ -52,12 +52,22 @@ class GPayListenerService : NotificationListenerService() {
         // We now process notifications from any app (like SMS for KVB bank)
 
         val extras = sbn.notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
-        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
-
-        // Combine title + text + bigText for broader matching
-        val fullText = "$title $text $bigText"
+        val sb = java.lang.StringBuilder()
+        if (extras != null) {
+            for (key in extras.keySet()) {
+                val value = extras.get(key)
+                if (value is CharSequence) {
+                    sb.append(value.toString()).append(" ")
+                } else if (value is Array<*>) {
+                    for (item in value) {
+                        if (item is CharSequence) {
+                            sb.append(item.toString()).append(" ")
+                        }
+                    }
+                }
+            }
+        }
+        val fullText = sb.toString()
 
         val parsed = parseTransaction(fullText)
         if (parsed == null) {
