@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from backend.db.mongo import db_manager
-from backend.auth_utils import hash_password, verify_password, create_jwt
+from backend.auth_utils import hash_password, verify_password, create_jwt, get_current_user
 import datetime
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -100,3 +100,24 @@ async def login(req: LoginRequest):
         "token": token,
         "user": {"user_id": user["username"], "name": user.get("name", ""), "email": user["email"]},
     }
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+@router.post("/change-password")
+async def change_password(request: ChangePasswordRequest, user: dict = Depends(get_current_user)):
+    db = db_manager.db
+    db_user = await db.users.find_one({"username": user["user_id"]})
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    if not verify_password(request.old_password, db_user["password"]):
+        raise HTTPException(status_code=400, detail="Incorrect old password")
+        
+    new_hashed = hash_password(request.new_password)
+    await db.users.update_one(
+        {"username": user["user_id"]},
+        {"$set": {"password": new_hashed}}
+    )
+    return {"success": True, "message": "Password changed successfully"}

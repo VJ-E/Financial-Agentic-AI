@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key, Bell, Check, Trash2, LogOut, Copy } from 'lucide-react';
+import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key, Bell, Check, Trash2, LogOut, Copy, Image as ImageIcon } from 'lucide-react';
 type Message = {
     role: "user" | "assistant";
     content: string;
@@ -31,12 +31,23 @@ export default function Home() {
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [apiKeys, setApiKeys] = useState<string[]>([]);
+    const [geminiApiKeys, setGeminiApiKeys] = useState<string[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [authUser, setAuthUser] = useState<any>(null);
+    const [activeBatch, setActiveBatch] = useState<{ batchId: string, count: number } | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+    const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+    const [settingsTab, setSettingsTab] = useState<'api_keys' | 'account'>('api_keys');
+    const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const getAuthHeaders = () => {
         const token = localStorage.getItem("auth_token");
-        return token ? { "Authorization": `Bearer ${token}` } : {};
+        const headers: any = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (geminiApiKeys.length > 0) headers["X-Gemini-Api-Keys"] = JSON.stringify(geminiApiKeys);
+        return headers;
     };
 
     const handleLogout = () => {
@@ -137,10 +148,23 @@ export default function Home() {
 
     const fetchPendingQueue = async () => {
         try {
-            const res = await fetch("/api/finance/pending", { headers: { ...getAuthHeaders() } });
+            const res = await fetch("/api/finance/pending", { 
+                headers: { ...getAuthHeaders() },
+                cache: 'no-store'
+            });
             if (res.ok) {
                 const data = await res.json();
-                if (data.data) setPendingTransactions(data.data);
+                if (data.data) {
+                    setPendingTransactions(data.data);
+                    
+                    // Update activeBatch count if it's currently active
+                    setActiveBatch(currentBatch => {
+                        if (!currentBatch) return null;
+                        const remaining = data.data.filter((tx: any) => tx.batchId === currentBatch.batchId).length;
+                        if (remaining === 0) return null; // Auto-resolve the batch banner if all items are handled
+                        return { ...currentBatch, count: remaining };
+                    });
+                }
             }
         } catch (e) {
             console.error(e);
@@ -162,6 +186,10 @@ export default function Home() {
         const storedKeys = localStorage.getItem("gpay_agent_api_keys");
         if (storedKeys) {
             try { setApiKeys(JSON.parse(storedKeys)); } catch(e) {}
+        }
+        const storedGemini = localStorage.getItem("gemini_api_keys");
+        if (storedGemini) {
+            try { setGeminiApiKeys(JSON.parse(storedGemini)); } catch(e) {}
         }
     }, []);
 
@@ -194,10 +222,50 @@ export default function Home() {
         } catch (e) { console.error(e); }
     };
 
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+        const file = e.target.files[0];
+        
+        if (file.size > 5 * 1024 * 1024) {
+            alert("File is too large. Maximum size is 5MB.");
+            return;
+        }
+
+        setSelectedImageFile(file);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    const handleBatchApprove = async () => {
+        if (!activeBatch) return;
+        try {
+            await fetch("/api/finance/pending/batch/approve", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                body: JSON.stringify({ batch_id: activeBatch.batchId })
+            });
+            setActiveBatch(null);
+            fetchDashboardData();
+            fetchPendingQueue();
+        } catch (err) { console.error(err); }
+    };
+
+    const handleBatchReject = async () => {
+        if (!activeBatch) return;
+        try {
+            await fetch("/api/finance/pending/batch/reject", {
+                method: "POST", // The proxy uses POST to forward as DELETE
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                body: JSON.stringify({ batch_id: activeBatch.batchId })
+            });
+            setActiveBatch(null);
+            fetchPendingQueue();
+        } catch (err) { console.error(err); }
+    };
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || isLoading) return;
+        if ((!input.trim() && !selectedImageFile) || isLoading || isUploading) return;
 
         // Implement CLEAR terminal command
         if (input.trim().toLowerCase() === "clear") {
@@ -206,8 +274,51 @@ export default function Home() {
             return;
         }
 
-        const userMsg: Message = { role: "user", content: input };
-        const newMessages = [...messages, userMsg];
+        let extractedTransactions = null;
+
+        if (selectedImageFile) {
+            setIsUploading(true);
+            const formData = new FormData();
+            formData.append("file", selectedImageFile);
+            try {
+                const res = await fetch("/api/finance/upload", {
+                    method: "POST",
+                    headers: { ...getAuthHeaders() },
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success && data.count > 0) {
+                    setActiveBatch({ batchId: data.batchId, count: data.count });
+                    fetchPendingQueue();
+                    extractedTransactions = data.transactions;
+                } else if (!res.ok) {
+                    alert(data.detail || data.message || "Failed to analyze image.");
+                    setIsUploading(false);
+                    return;
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Error uploading image.");
+                setIsUploading(false);
+                return;
+            }
+            setSelectedImageFile(null);
+            setIsUploading(false);
+        }
+
+        let finalInput = input.trim();
+        if (finalInput === "") {
+            // If they just attached an image and hit enter, the image is uploaded and queued. We stop here.
+            setInput("");
+            return;
+        }
+
+        if (extractedTransactions) {
+            finalInput += `\n\n[Extracted Image Data]:\n${JSON.stringify(extractedTransactions, null, 2)}`;
+        }
+
+        const userMsg: Message = { role: "user", content: finalInput };
+        const newMessages: Message[] = [...messages, { role: "user", content: input.trim() }]; // Show original input to user visually
         setMessages(newMessages);
         setInput("");
         setIsLoading(true);
@@ -217,7 +328,7 @@ export default function Home() {
             const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                body: JSON.stringify({ messages: newMessages, api_keys: apiKeys }),
+                body: JSON.stringify({ messages: [...messages, userMsg], api_keys: apiKeys }),
             });
 
             if (!response.ok) throw new Error("Agent failed to respond.");
@@ -315,9 +426,6 @@ export default function Home() {
                             </button>
                             <button onClick={() => setIsSettingsOpen(true)} className="brutalist-button flex items-center justify-center !px-3">
                                 <Settings className="w-5 h-5" />
-                            </button>
-                            <button onClick={handleLogout} className="brutalist-button flex items-center justify-center !px-3 hover:!bg-red-500 hover:!text-white">
-                                <LogOut className="w-5 h-5" />
                             </button>
                         </div>
                     </header>
@@ -560,21 +668,82 @@ export default function Home() {
                     <div ref={messagesEndRef} />
                 </div>
 
-                <form onSubmit={handleSubmit} className="flex border-t-[4px] border-black bg-white focus-within:bg-[#f4f4f4] transition-all">
-                    <div className="px-4 py-4 font-black text-black flex items-center text-lg">
-                        {'>'}
+                {/* Batch Banner */}
+                {activeBatch && (
+                    <div className="bg-black text-white p-3 flex items-center justify-between font-bold text-sm uppercase border-t-[4px] border-black">
+                        <span>[{activeBatch.count} CHANGES EXTRACTED]</span>
+                        <div className="flex gap-2">
+                            <button onClick={handleBatchApprove} className="bg-[#FFDE00] text-black px-3 py-1 hover:bg-white transition-colors">ACCEPT</button>
+                            <button onClick={handleBatchReject} className="bg-red-500 text-white px-3 py-1 hover:bg-red-600 transition-colors">DECLINE</button>
+                            <button onClick={() => setIsQueueOpen(true)} className="border-2 border-white px-2 py-1 hover:bg-white hover:text-black transition-colors">^</button>
+                        </div>
                     </div>
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="ENTER COMMAND..."
-                        className="flex-1 bg-transparent text-black uppercase font-bold text-sm placeholder-gray-500 p-4 focus:outline-none focus:ring-0"
-                        disabled={isLoading}
-                    />
+                )}
+
+                <form onSubmit={handleSubmit} className="flex border-t-[4px] border-black bg-white focus-within:bg-[#f4f4f4] transition-all">
+                    <div className="px-4 py-4 font-black text-black flex items-center text-lg gap-2 border-r-[4px] border-black relative">
+                        <button 
+                            type="button"
+                            onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+                            disabled={isUploading}
+                            className={`hover:text-blue-600 transition-colors disabled:opacity-50 ${isPlusMenuOpen ? 'rotate-45 text-blue-600' : ''}`}
+                            title="More options"
+                        >
+                            <Plus className="w-5 h-5 transition-transform" />
+                        </button>
+                        
+                        {/* Drop-up Menu */}
+                        {isPlusMenuOpen && (
+                            <>
+                                <div 
+                                    className="fixed inset-0 z-40" 
+                                    onClick={() => setIsPlusMenuOpen(false)}
+                                ></div>
+                                <div className="absolute bottom-full left-0 mb-2 w-48 bg-white border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] z-50 flex flex-col">
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            setIsPlusMenuOpen(false);
+                                            fileInputRef.current?.click();
+                                        }}
+                                        className="flex items-center gap-3 px-4 py-3 hover:bg-[#FFDE00] font-bold text-sm uppercase transition-colors text-left"
+                                    >
+                                        <ImageIcon className="w-4 h-4" />
+                                        Upload Image
+                                    </button>
+                                    </div>
+                                </>
+                            )}
+                        <input 
+                            type="file" 
+                            accept="image/*"
+                            ref={fileInputRef}
+                            className="hidden"
+                            onChange={handleImageUpload}
+                        />
+                    </div>
+                    <div className="flex-1 flex flex-col justify-center">
+                        {selectedImageFile && (
+                            <div className="flex items-center gap-2 bg-[#FFDE00] text-black font-bold text-xs uppercase px-3 py-1 ml-4 mt-2 w-max border-2 border-black">
+                                <ImageIcon className="w-3 h-3" />
+                                <span className="truncate max-w-[150px]">{selectedImageFile.name}</span>
+                                <button type="button" onClick={() => setSelectedImageFile(null)} className="hover:text-red-500">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder={isUploading ? "ANALYZING IMAGE..." : "ENTER COMMAND..."}
+                            className="w-full bg-transparent text-black uppercase font-bold text-sm placeholder-gray-500 p-4 focus:outline-none focus:ring-0"
+                            disabled={isLoading || isUploading}
+                        />
+                    </div>
                     <button
                         type="submit"
-                        disabled={isLoading || !input.trim()}
+                        disabled={isLoading || (!input.trim() && !selectedImageFile) || isUploading}
                         className="bg-black text-white font-bold px-6 py-4 uppercase hover:bg-[#FFDE00] hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center border-l-[4px] border-black"
                     >
                         Execute
@@ -601,54 +770,181 @@ export default function Home() {
                         <div className="w-full md:w-1/3 border-b-4 md:border-b-0 md:border-r-4 border-black bg-[#f4f4f4] p-6">
                             <h2 className="text-3xl font-black uppercase mb-8 border-b-4 border-black pb-2">Settings</h2>
                             <div className="space-y-2">
-                                <button className="w-full flex items-center gap-3 p-3 bg-black text-white font-bold uppercase tracking-wider">
+                                <button 
+                                    onClick={() => setSettingsTab('api_keys')}
+                                    className={`w-full flex items-center gap-3 p-3 font-bold uppercase tracking-wider transition-colors ${settingsTab === 'api_keys' ? 'bg-black text-white' : 'bg-transparent text-black hover:bg-gray-200'}`}
+                                >
                                     <Key className="w-5 h-5" /> API Keys
+                                </button>
+                                <button 
+                                    onClick={() => setSettingsTab('account')}
+                                    className={`w-full flex items-center gap-3 p-3 font-bold uppercase tracking-wider transition-colors ${settingsTab === 'account' ? 'bg-black text-white' : 'bg-transparent text-black hover:bg-gray-200'}`}
+                                >
+                                    <Settings className="w-5 h-5" /> Account
                                 </button>
                             </div>
                         </div>
                         
                         <div className="w-full md:w-2/3 p-6 md:p-8 overflow-y-auto">
-                            <h3 className="text-2xl font-black uppercase mb-2">Groq API Keys</h3>
-                            <p className="font-mono text-sm text-gray-600 mb-6">Enter fallback keys to bypass rate limits during heavy usage. Saved locally.</p>
-                            
-                            <div className="space-y-4">
-                                {apiKeys.map((key, index) => (
-                                    <div key={index} className="flex items-center gap-2">
-                                        <input 
-                                            type="text" 
-                                            value={key} 
-                                            onChange={(e) => {
-                                                const newKeys = [...apiKeys];
-                                                newKeys[index] = e.target.value;
-                                                setApiKeys(newKeys);
-                                                localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
-                                            }}
-                                            placeholder="gsk_..." 
-                                            className="flex-1 p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
-                                        />
+                            {settingsTab === 'api_keys' ? (
+                                <>
+                                    <h3 className="text-2xl font-black uppercase mb-2">Gemini API Keys</h3>
+                                    <p className="font-mono text-sm text-gray-600 mb-4">Fallback keys required for Vector Embeddings and Free Image Analysis (Receipts/Screenshots). Saved locally.</p>
+                                    
+                                    <div className="space-y-4 mb-8">
+                                        {geminiApiKeys.map((key, index) => (
+                                            <div key={index} className="flex items-center gap-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={key} 
+                                                    onChange={(e) => {
+                                                        const newKeys = [...geminiApiKeys];
+                                                        newKeys[index] = e.target.value;
+                                                        setGeminiApiKeys(newKeys);
+                                                        localStorage.setItem("gemini_api_keys", JSON.stringify(newKeys));
+                                                    }}
+                                                    placeholder="AIzaSy..." 
+                                                    className="flex-1 p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
+                                                />
+                                                <button 
+                                                    onClick={() => {
+                                                        const newKeys = geminiApiKeys.filter((_, i) => i !== index);
+                                                        setGeminiApiKeys(newKeys);
+                                                        localStorage.setItem("gemini_api_keys", JSON.stringify(newKeys));
+                                                    }}
+                                                    className="bg-black text-white p-3 border-4 border-black hover:bg-red-500 hover:text-black transition-colors font-bold uppercase"
+                                                >
+                                                    <X className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        ))}
                                         <button 
                                             onClick={() => {
-                                                const newKeys = apiKeys.filter((_, i) => i !== index);
+                                                const newKeys = [...geminiApiKeys, ""];
+                                                setGeminiApiKeys(newKeys);
+                                                localStorage.setItem("gemini_api_keys", JSON.stringify(newKeys));
+                                            }}
+                                            className="brutalist-button w-full flex items-center justify-center gap-2"
+                                        >
+                                            <Plus className="w-5 h-5" /> Add Another Gemini Key
+                                        </button>
+                                    </div>
+
+                                    <h3 className="text-2xl font-black uppercase mb-2">Groq API Keys</h3>
+                                    <p className="font-mono text-sm text-gray-600 mb-6">Enter fallback keys to bypass rate limits during heavy usage. Saved locally.</p>
+                                    
+                                    <div className="space-y-4">
+                                        {apiKeys.map((key, index) => (
+                                            <div key={index} className="flex items-center gap-2">
+                                                <input 
+                                                    type="text" 
+                                                    value={key} 
+                                                    onChange={(e) => {
+                                                        const newKeys = [...apiKeys];
+                                                        newKeys[index] = e.target.value;
+                                                        setApiKeys(newKeys);
+                                                        localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
+                                                    }}
+                                                    placeholder="gsk_..." 
+                                                    className="flex-1 p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
+                                                />
+                                                <button 
+                                                    onClick={() => {
+                                                        const newKeys = apiKeys.filter((_, i) => i !== index);
+                                                        setApiKeys(newKeys);
+                                                        localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
+                                                    }}
+                                                    className="bg-black text-white p-3 border-4 border-black hover:bg-red-500 hover:text-black transition-colors font-bold uppercase"
+                                                >
+                                                    <X className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button 
+                                            onClick={() => {
+                                                const newKeys = [...apiKeys, ""];
                                                 setApiKeys(newKeys);
                                                 localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
                                             }}
-                                            className="bg-black text-white p-3 border-4 border-black hover:bg-red-500 hover:text-black transition-colors font-bold uppercase"
+                                            className="brutalist-button w-full flex items-center justify-center gap-2"
                                         >
-                                            <X className="w-5 h-5" />
+                                            <Plus className="w-5 h-5" /> Add Another Key
                                         </button>
                                     </div>
-                                ))}
-                                <button 
-                                    onClick={() => {
-                                        const newKeys = [...apiKeys, ""];
-                                        setApiKeys(newKeys);
-                                        localStorage.setItem("gpay_agent_api_keys", JSON.stringify(newKeys));
-                                    }}
-                                    className="brutalist-button w-full flex items-center justify-center gap-2"
-                                >
-                                    <Plus className="w-5 h-5" /> Add Another Key
-                                </button>
-                            </div>
+                                </>
+                            ) : (
+                                <>
+                                    <h3 className="text-2xl font-black uppercase mb-6">Account Details</h3>
+                                    
+                                    <div className="bg-[#f4f4f4] border-4 border-black p-4 mb-8">
+                                        <p className="font-mono text-sm font-bold uppercase">Username</p>
+                                        <p className="text-lg font-black">{authUser?.user_id || "Loading..."}</p>
+                                        <p className="font-mono text-sm font-bold uppercase mt-4">Email</p>
+                                        <p className="text-lg font-black">{authUser?.email || "Loading..."}</p>
+                                    </div>
+
+                                    <h3 className="text-xl font-black uppercase mb-4 border-b-2 border-black pb-2">Change Password</h3>
+                                    <form onSubmit={async (e) => {
+                                        e.preventDefault();
+                                        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+                                            alert("New passwords do not match!");
+                                            return;
+                                        }
+                                        try {
+                                            const res = await fetch("/api/auth/change-password", {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                                                body: JSON.stringify({ old_password: passwordForm.oldPassword, new_password: passwordForm.newPassword })
+                                            });
+                                            const data = await res.json();
+                                            if (res.ok) {
+                                                alert("Password changed successfully!");
+                                                setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+                                            } else {
+                                                alert(data.detail || data.error || "Failed to change password");
+                                            }
+                                        } catch (err) {
+                                            alert("An error occurred");
+                                        }
+                                    }} className="space-y-4 mb-8">
+                                        <input 
+                                            type="password" 
+                                            placeholder="Old Password"
+                                            value={passwordForm.oldPassword}
+                                            onChange={(e) => setPasswordForm({...passwordForm, oldPassword: e.target.value})}
+                                            required
+                                            className="w-full p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
+                                        />
+                                        <input 
+                                            type="password" 
+                                            placeholder="New Password"
+                                            value={passwordForm.newPassword}
+                                            onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})}
+                                            required
+                                            minLength={6}
+                                            className="w-full p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
+                                        />
+                                        <input 
+                                            type="password" 
+                                            placeholder="Confirm New Password"
+                                            value={passwordForm.confirmPassword}
+                                            onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
+                                            required
+                                            minLength={6}
+                                            className="w-full p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
+                                        />
+                                        <button type="submit" className="bg-[#FFDE00] text-black border-4 border-black font-black p-3 w-full uppercase hover:bg-black hover:text-white transition-colors">
+                                            Update Password
+                                        </button>
+                                    </form>
+
+                                    <div className="border-t-4 border-black pt-6 mt-auto">
+                                        <button onClick={handleLogout} className="w-full bg-red-500 text-white border-4 border-black font-black p-3 uppercase flex items-center justify-center gap-2 hover:bg-black transition-colors">
+                                            <LogOut className="w-5 h-5" /> Logout
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

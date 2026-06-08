@@ -17,15 +17,27 @@ def get_qdrant_client():
             _client = QdrantClient(path="local_qdrant")
     return _client
 
+from backend.context import gemini_api_keys_var
+
 def get_embedding(text: str, task_type: str = "retrieval_document") -> list[float]:
     """Generates a 768-dimensional embedding using Google Gemini (0MB local RAM)."""
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    result = genai.embed_content(
-        model="models/text-embedding-004",
-        content=text,
-        task_type=task_type
-    )
-    return result['embedding']
+    api_keys = gemini_api_keys_var.get() or [os.getenv("GEMINI_API_KEY")]
+    
+    for key in api_keys:
+        if not key: continue
+        try:
+            genai.configure(api_key=key.strip())
+            result = genai.embed_content(
+                model="models/text-embedding-004",
+                content=text,
+                task_type=task_type
+            )
+            return result['embedding']
+        except Exception as e:
+            if key == api_keys[-1]:
+                raise e
+    
+    return []
 
 COLLECTION_NAME = "transactions_v2"
 

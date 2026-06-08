@@ -4,6 +4,7 @@ export async function POST(req: Request) {
     try {
         const { messages, api_keys } = await req.json();
         const authHeader = req.headers.get("authorization") || "";
+        const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
 
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             return NextResponse.json({ error: "Messages array is required" }, { status: 400 });
@@ -15,6 +16,7 @@ export async function POST(req: Request) {
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": authHeader,
+                "X-Gemini-Api-Keys": geminiHeader,
             },
             body: JSON.stringify({ messages, api_keys: api_keys || [] })
         });

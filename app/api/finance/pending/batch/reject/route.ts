@@ -7,21 +7,19 @@ export async function POST(req: Request) {
         const body = await req.json();
         const authHeader = req.headers.get("authorization") || "";
         const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
-        const { tx_id, description, amount, category } = body;
+        const { batch_id } = body;
 
-        const response = await fetch(`${BACKEND_URL}/finance/pending/${tx_id}/approve`, {
-            method: 'POST',
+        const response = await fetch(`${BACKEND_URL}/finance/pending/batch/${batch_id}/reject`, {
+            method: 'DELETE',
             headers: {
-                'Content-Type': 'application/json',
                 'Authorization': authHeader,
                 'X-Gemini-Api-Keys': geminiHeader,
-            },
-            body: JSON.stringify({ description, amount, category })
+            }
         });
         
         const data = await response.json();
         return NextResponse.json(data);
     } catch (error) {
-        return NextResponse.json({ success: false, message: "Failed to approve transaction" }, { status: 500 });
+        return NextResponse.json({ success: false, message: "Failed to reject batch" }, { status: 500 });
     }
 }

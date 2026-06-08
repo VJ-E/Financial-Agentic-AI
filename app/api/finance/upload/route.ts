@@ -4,24 +4,22 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
 export async function POST(req: Request) {
     try {
-        const body = await req.json();
+        const formData = await req.formData();
         const authHeader = req.headers.get("authorization") || "";
         const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
-        const { tx_id, description, amount, category } = body;
 
-        const response = await fetch(`${BACKEND_URL}/finance/pending/${tx_id}/approve`, {
+        const response = await fetch(`${BACKEND_URL}/finance/upload`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
                 'Authorization': authHeader,
                 'X-Gemini-Api-Keys': geminiHeader,
             },
-            body: JSON.stringify({ description, amount, category })
+            body: formData
         });
         
         const data = await response.json();
-        return NextResponse.json(data);
+        return NextResponse.json(data, { status: response.status });
     } catch (error) {
-        return NextResponse.json({ success: false, message: "Failed to approve transaction" }, { status: 500 });
+        return NextResponse.json({ success: false, message: "Failed to upload image" }, { status: 500 });
     }
 }

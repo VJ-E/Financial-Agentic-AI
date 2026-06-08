@@ -11,3 +11,4 @@ google-generativeai
 python-dotenv
 bcrypt
 PyJWT
+python-multipart

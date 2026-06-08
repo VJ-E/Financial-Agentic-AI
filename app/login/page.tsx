@@ -73,8 +73,7 @@ export default function LoginPage() {
                             value={identifier}
                             onChange={(e) => setIdentifier(e.target.value)}
                             required
-                            placeholder="agent_smith or you@example.com"
-                            className="w-full border-4 border-black p-3 font-bold focus:outline-none focus:bg-[#FFDE00] transition-colors mt-1"
+                            className="w-full bg-white border-[3px] border-black p-4 font-bold uppercase focus:outline-none focus:bg-[#FFDE00] transition-colors mt-1"
                         />
                     </div>
 

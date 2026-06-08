@@ -7,11 +7,13 @@ export async function GET(req: Request) {
     try {
         const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
         const authHeader = req.headers.get("authorization") || "";
+        const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
 
         const response = await fetch(`${BACKEND_URL}/finance`, {
             cache: 'no-store',
             headers: {
                 "Authorization": authHeader,
+                "X-Gemini-Api-Keys": geminiHeader,
             }
         });
 

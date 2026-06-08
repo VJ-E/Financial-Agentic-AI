@@ -6,11 +6,15 @@ export async function DELETE(req: Request) {
     try {
         const body = await req.json();
         const authHeader = req.headers.get("authorization") || "";
+        const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
         const { tx_id } = body;
 
         const response = await fetch(`${BACKEND_URL}/finance/pending/${tx_id}/reject`, {
             method: 'DELETE',
-            headers: { 'Authorization': authHeader }
+            headers: { 
+                'Authorization': authHeader,
+                'X-Gemini-Api-Keys': geminiHeader 
+            }
         });
         
         const data = await response.json();
