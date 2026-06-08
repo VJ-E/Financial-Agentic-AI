@@ -94,9 +94,9 @@ export default function Home() {
                 }
 
                 setSummaryData({
-                    income: calculatedIncome,
-                    expenses: calculatedExpenses,
-                    balance: data.profile.totalBalance,
+                    income: calculatedIncome || 0,
+                    expenses: calculatedExpenses || 0,
+                    balance: data.profile.totalBalance || 0,
                 });
 
                 if (data.profile.activeSavingsGoals) {
@@ -398,7 +398,7 @@ export default function Home() {
                             <h1 className="text-4xl md:text-5xl font-black tracking-tighter uppercase mb-2">My Dashboard</h1>
                             <div className="flex items-center gap-2">
                                 <p className="border-2 border-black inline-block px-2 py-1 font-bold text-sm bg-black text-white">AGENT ACTIVE</p>
-                                {authUser && (
+                                {authUser && authUser.user_id && (
                                     <button
                                         onClick={() => { navigator.clipboard.writeText(authUser.user_id); }}
                                         className="border-2 border-black inline-flex items-center gap-1 px-2 py-1 font-mono text-xs bg-[#f4f4f4] hover:bg-[#FFDE00] transition-colors cursor-pointer"
@@ -610,7 +610,7 @@ export default function Home() {
                                                 </div>
                                             </div>
                                             <div className={`font-black text-2xl ${(t.category === 'Fixed' || t.category === 'Variable') ? 'text-black' : 'text-black'}`}>
-                                                {(t.category === 'Fixed' || t.category === 'Variable') ? '-' : '+'}₹{t.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                {(t.category === 'Fixed' || t.category === 'Variable') ? '-' : '+'}₹{(t.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                             </div>
                                         </div>
                                     )
