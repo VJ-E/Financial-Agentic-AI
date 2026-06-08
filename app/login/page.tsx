@@ -6,7 +6,7 @@ import { LogIn, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
-    const [email, setEmail] = useState("");
+    const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
     const [showPw, setShowPw] = useState(false);
     const [error, setError] = useState("");
@@ -21,7 +21,7 @@ export default function LoginPage() {
             const res = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ identifier, password }),
             });
             const data = await res.json();
 
@@ -67,13 +67,13 @@ export default function LoginPage() {
                     )}
 
                     <div>
-                        <label className="text-xs font-bold font-mono uppercase tracking-widest">Email</label>
+                        <label className="text-xs font-bold font-mono uppercase tracking-widest">Username or Email</label>
                         <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            type="text"
+                            value={identifier}
+                            onChange={(e) => setIdentifier(e.target.value)}
                             required
-                            placeholder="you@example.com"
+                            placeholder="agent_smith or you@example.com"
                             className="w-full border-4 border-black p-3 font-bold focus:outline-none focus:bg-[#FFDE00] transition-colors mt-1"
                         />
                     </div>

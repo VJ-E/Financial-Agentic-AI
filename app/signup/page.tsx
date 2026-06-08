@@ -6,6 +6,7 @@ import { UserPlus, Eye, EyeOff } from "lucide-react";
 
 export default function SignupPage() {
     const router = useRouter();
+    const [username, setUsername] = useState("");
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -22,7 +23,7 @@ export default function SignupPage() {
             const res = await fetch("/api/auth/signup", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, email, password }),
+                body: JSON.stringify({ username, name, email, password }),
             });
             const data = await res.json();
 
@@ -66,6 +67,18 @@ export default function SignupPage() {
                             ⚠ {error}
                         </div>
                     )}
+
+                    <div>
+                        <label className="text-xs font-bold font-mono uppercase tracking-widest">Username (Unique ID)</label>
+                        <input
+                            type="text"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                            required
+                            placeholder="agent_smith"
+                            className="w-full border-4 border-black p-3 font-bold focus:outline-none focus:bg-[#FFDE00] transition-colors mt-1"
+                        />
+                    </div>
 
                     <div>
                         <label className="text-xs font-bold font-mono uppercase tracking-widest">Name</label>
