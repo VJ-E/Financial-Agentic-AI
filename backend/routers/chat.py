@@ -35,6 +35,6 @@ async def chat_endpoint(req: Request, request: ChatRequest, user: dict = Depends
             if event["event"] == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
                 if hasattr(chunk, "content") and chunk.content:
-                    yield f"data: {chunk.content}\n\n"
+                    yield chunk.content
 
-    return StreamingResponse(generator(), media_type="text/event-stream")
+    return StreamingResponse(generator(), media_type="text/plain")

@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
         return new Response(response.body, {
             headers: {
-                "Content-Type": "text/event-stream",
+                "Content-Type": "text/plain",
                 "Cache-Control": "no-cache",
             }
         });

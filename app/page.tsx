@@ -345,20 +345,13 @@ export default function Home() {
                     if (done) break;
 
                     const chunkText = decoder.decode(value, { stream: true });
-                    const lines = chunkText.split('\n');
-
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const dataText = line.substring(6);
-                            setMessages((prev) => {
-                                const lastMsg = prev[prev.length - 1];
-                                return [
-                                    ...prev.slice(0, -1),
-                                    { ...lastMsg, content: lastMsg.content + dataText }
-                                ];
-                            });
-                        }
-                    }
+                    setMessages((prev) => {
+                        const lastMsg = prev[prev.length - 1];
+                        return [
+                            ...prev.slice(0, -1),
+                            { ...lastMsg, content: lastMsg.content + chunkText }
+                        ];
+                    });
                 }
             }
 
