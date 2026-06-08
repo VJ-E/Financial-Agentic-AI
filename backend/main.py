@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.db.mongo import db_manager
 from backend.db.vector import init_qdrant
-from backend.routers import finance, chat
+from backend.routers import finance, chat, auth
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +42,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(finance.router)
 app.include_router(chat.router)
 

@@ -5,10 +5,12 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 export async function DELETE(req: Request) {
     try {
         const body = await req.json();
+        const authHeader = req.headers.get("authorization") || "";
         const { tx_id } = body;
 
         const response = await fetch(`${BACKEND_URL}/finance/pending/${tx_id}/reject`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'Authorization': authHeader }
         });
         
         const data = await response.json();

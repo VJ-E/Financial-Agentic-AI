@@ -11,3 +11,4 @@ class AgentState(TypedDict):
     """
     messages: Annotated[list[AnyMessage], add_messages]
     api_keys: list[str]
+    user_id: str

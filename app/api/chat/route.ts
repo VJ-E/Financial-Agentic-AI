@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
     try {
         const { messages, api_keys } = await req.json();
+        const authHeader = req.headers.get("authorization") || "";
 
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             return NextResponse.json({ error: "Messages array is required" }, { status: 400 });
@@ -12,7 +13,8 @@ export async function POST(req: Request) {
         const response = await fetch(`${BACKEND_URL}/chat`, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": authHeader,
             },
             body: JSON.stringify({ messages, api_keys: api_keys || [] })
         });

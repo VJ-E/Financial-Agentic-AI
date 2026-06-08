@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
     try {
         const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+        const authHeader = req.headers.get("authorization") || "";
+
         const response = await fetch(`${BACKEND_URL}/finance`, {
-            cache: 'no-store'
+            cache: 'no-store',
+            headers: {
+                "Authorization": authHeader,
+            }
         });
 
         if (!response.ok) {

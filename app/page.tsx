@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key, Bell, Check, Trash2 } from 'lucide-react';
+import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key, Bell, Check, Trash2, LogOut, Copy } from 'lucide-react';
 type Message = {
     role: "user" | "assistant";
     content: string;
@@ -22,6 +23,7 @@ const defaultTopSpending = [
 ];
 
 export default function Home() {
+    const router = useRouter();
     const [input, setInput] = useState("");
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +32,18 @@ export default function Home() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [apiKeys, setApiKeys] = useState<string[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [authUser, setAuthUser] = useState<any>(null);
+
+    const getAuthHeaders = () => {
+        const token = localStorage.getItem("auth_token");
+        return token ? { "Authorization": `Bearer ${token}` } : {};
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user");
+        router.push("/login");
+    };
 
     // Auto-scroll to bottom of chat
     useEffect(() => {
@@ -51,7 +65,7 @@ export default function Home() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-            const res = await fetch("/api/finance", { signal: controller.signal });
+            const res = await fetch("/api/finance", { signal: controller.signal, headers: { ...getAuthHeaders() } });
             clearTimeout(timeoutId);
             
             if (!res.ok) throw new Error("Failed to fetch dashboard data");
@@ -123,7 +137,7 @@ export default function Home() {
 
     const fetchPendingQueue = async () => {
         try {
-            const res = await fetch("/api/finance/pending");
+            const res = await fetch("/api/finance/pending", { headers: { ...getAuthHeaders() } });
             if (res.ok) {
                 const data = await res.json();
                 if (data.data) setPendingTransactions(data.data);
@@ -134,6 +148,15 @@ export default function Home() {
     };
 
     useEffect(() => {
+        const token = localStorage.getItem("auth_token");
+        if (!token) {
+            router.push("/login");
+            return;
+        }
+        const storedUser = localStorage.getItem("auth_user");
+        if (storedUser) {
+            try { setAuthUser(JSON.parse(storedUser)); } catch(e) {}
+        }
         fetchDashboardData();
         fetchPendingQueue();
         const storedKeys = localStorage.getItem("gpay_agent_api_keys");
@@ -152,7 +175,7 @@ export default function Home() {
         try {
             await fetch("/api/finance/pending/approve", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                 body: JSON.stringify({ tx_id: tx._id, description: tx.description, amount: Number(tx.amount), category: tx.category })
             });
             fetchPendingQueue();
@@ -164,7 +187,7 @@ export default function Home() {
         try {
             await fetch("/api/finance/pending/reject", {
                 method: "DELETE",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                 body: JSON.stringify({ tx_id })
             });
             fetchPendingQueue();
@@ -193,7 +216,7 @@ export default function Home() {
             // Hit the actual LLM Agent backend
             const response = await fetch("/api/chat", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                 body: JSON.stringify({ messages: newMessages, api_keys: apiKeys }),
             });
 
@@ -262,7 +285,18 @@ export default function Home() {
                     <header className="flex flex-col md:flex-row justify-between items-start md:items-end border-b-4 border-black pb-4 mb-8">
                         <div>
                             <h1 className="text-4xl md:text-5xl font-black tracking-tighter uppercase mb-2">My Dashboard</h1>
-                            <p className="border-2 border-black inline-block px-2 py-1 font-bold text-sm bg-black text-white">AGENT ACTIVE</p>
+                            <div className="flex items-center gap-2">
+                                <p className="border-2 border-black inline-block px-2 py-1 font-bold text-sm bg-black text-white">AGENT ACTIVE</p>
+                                {authUser && (
+                                    <button
+                                        onClick={() => { navigator.clipboard.writeText(authUser.user_id); }}
+                                        className="border-2 border-black inline-flex items-center gap-1 px-2 py-1 font-mono text-xs bg-[#f4f4f4] hover:bg-[#FFDE00] transition-colors cursor-pointer"
+                                        title="Click to copy your User ID for the Android app"
+                                    >
+                                        <Copy className="w-3 h-3" /> ID: {authUser.user_id.slice(-6)}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         <div className="mt-4 md:mt-0 flex gap-4">
                             <button className="brutalist-button flex items-center gap-2">
@@ -281,6 +315,9 @@ export default function Home() {
                             </button>
                             <button onClick={() => setIsSettingsOpen(true)} className="brutalist-button flex items-center justify-center !px-3">
                                 <Settings className="w-5 h-5" />
+                            </button>
+                            <button onClick={handleLogout} className="brutalist-button flex items-center justify-center !px-3 hover:!bg-red-500 hover:!text-white">
+                                <LogOut className="w-5 h-5" />
                             </button>
                         </div>
                     </header>

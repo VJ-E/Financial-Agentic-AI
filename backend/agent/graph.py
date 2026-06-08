@@ -83,7 +83,8 @@ def chatbot(state: AgentState):
     
     # Prepend the strict system instructions right before evaluating new outputs 
     # guaranteeing rules are prioritized effectively alongside generic memory.
-    sys_instruction = SYSTEM_INSTRUCTION.strip() + "\n\nCRITICAL: You are acting on behalf of user ID 'user_123'. You MUST ALWAYS pass 'user_123' EXACTLY as the user_id argument for all your tools."
+    user_id = state.get("user_id", "unknown")
+    sys_instruction = SYSTEM_INSTRUCTION.strip() + f"\n\nCRITICAL: You are acting on behalf of user ID '{user_id}'. You MUST ALWAYS pass '{user_id}' EXACTLY as the user_id argument for all your tools."
     sys_msg = SystemMessage(content=sys_instruction)
     
     # Invoke model securely with bound capabilities

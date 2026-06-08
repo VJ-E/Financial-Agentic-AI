@@ -20,6 +20,8 @@ import androidx.work.WorkManager
 import androidx.work.ExistingPeriodicWorkPolicy
 import java.util.concurrent.TimeUnit
 
+import android.widget.EditText
+
 class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tvLogs: TextView
@@ -51,6 +53,22 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Toast.makeText(this, "Failed to rebind: ${e.message}", Toast.LENGTH_LONG).show()
             }
+        }
+
+        // User ID input
+        val etUserId = findViewById<EditText>(R.id.etUserId)
+        val prefs = getSharedPreferences("GPayLogs", Context.MODE_PRIVATE)
+        val savedUserId = prefs.getString("user_id", "") ?: ""
+        etUserId.setText(savedUserId)
+
+        findViewById<Button>(R.id.btnSaveUserId).setOnClickListener {
+            val userId = etUserId.text.toString().trim()
+            if (userId.isEmpty()) {
+                Toast.makeText(this, "Please enter your User ID!", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            prefs.edit().putString("user_id", userId).apply()
+            Toast.makeText(this, "User ID saved: $userId", Toast.LENGTH_SHORT).show()
         }
 
         // Check Battery Optimization

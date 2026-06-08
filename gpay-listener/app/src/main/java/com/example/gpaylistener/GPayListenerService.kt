@@ -159,9 +159,18 @@ class GPayListenerService : NotificationListenerService() {
             return
         }
 
+        // Read the saved user ID
+        val prefs = applicationContext.getSharedPreferences("GPayLogs", Context.MODE_PRIVATE)
+        val userId = prefs.getString("user_id", "") ?: ""
+        if (userId.isEmpty()) {
+            appendLog("ERROR: No User ID configured! Open the app and paste your User ID.")
+            return
+        }
+
         val request = Request.Builder()
             .url(BACKEND_URL)
             .addHeader("X-API-Key", API_KEY)
+            .addHeader("X-User-Id", userId)
             .post(body)
             .build()
 

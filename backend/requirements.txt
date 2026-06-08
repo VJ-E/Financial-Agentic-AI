@@ -9,3 +9,5 @@ langgraph
 qdrant-client
 google-generativeai
 python-dotenv
+bcrypt
+PyJWT
