@@ -28,7 +28,8 @@ export default function SignupPage() {
             const data = await res.json();
 
             if (!res.ok) {
-                setError(data.detail || "Signup failed.");
+                const errMsg = Array.isArray(data.detail) ? data.detail.map((err: any) => `${err.loc?.[1] || 'Field'}: ${err.msg}`).join(", ") : (data.detail || "Signup failed.");
+                setError(errMsg);
                 return;
             }
 
