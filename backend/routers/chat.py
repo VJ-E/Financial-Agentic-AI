@@ -7,7 +7,7 @@ from backend.auth_utils import get_current_user
 from backend.context import gemini_api_keys_var
 import json
 
-router = APIRouter(prefix="/chat", tags=["Chat & Agent"])
+router = APIRouter(tags=["Chat & Agent"])
 
 class ChatRequest(BaseModel):
     messages: List[Any]

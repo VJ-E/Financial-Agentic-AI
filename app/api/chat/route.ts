@@ -22,8 +22,9 @@ export async function POST(req: Request) {
         });
 
         return new Response(response.body, {
+            status: response.status,
             headers: {
-                "Content-Type": "text/plain",
+                "Content-Type": response.ok ? "text/plain" : "application/json",
                 "Cache-Control": "no-cache",
             }
         });
