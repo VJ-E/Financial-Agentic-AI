@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key } from 'lucide-react';
-
+import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key, Bell, Check, Trash2 } from 'lucide-react';
 type Message = {
     role: "user" | "assistant";
     content: string;
@@ -44,6 +43,8 @@ export default function Home() {
     const [expensesBarData, setExpensesBarData] = useState([]);
     const [recentLedgerData, setRecentLedgerData] = useState([]);
     const [vaultsData, setVaultsData] = useState([]);
+    const [pendingTransactions, setPendingTransactions] = useState<any[]>([]);
+    const [isQueueOpen, setIsQueueOpen] = useState(false);
 
     const fetchDashboardData = async () => {
         try {
@@ -120,13 +121,55 @@ export default function Home() {
         }
     };
 
+    const fetchPendingQueue = async () => {
+        try {
+            const res = await fetch("/api/finance/pending");
+            if (res.ok) {
+                const data = await res.json();
+                if (data.data) setPendingTransactions(data.data);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
     useEffect(() => {
         fetchDashboardData();
+        fetchPendingQueue();
         const storedKeys = localStorage.getItem("gpay_agent_api_keys");
         if (storedKeys) {
             try { setApiKeys(JSON.parse(storedKeys)); } catch(e) {}
         }
     }, []);
+
+    const handleQueueChange = (idx: number, field: string, val: any) => {
+        const newQueue = [...pendingTransactions];
+        newQueue[idx][field] = val;
+        setPendingTransactions(newQueue);
+    };
+
+    const handleApprove = async (tx: any) => {
+        try {
+            await fetch("/api/finance/pending/approve", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tx_id: tx._id, description: tx.description, amount: Number(tx.amount), category: tx.category })
+            });
+            fetchPendingQueue();
+            fetchDashboardData();
+        } catch (e) { console.error(e); }
+    };
+
+    const handleReject = async (tx_id: string) => {
+        try {
+            await fetch("/api/finance/pending/reject", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tx_id })
+            });
+            fetchPendingQueue();
+        } catch (e) { console.error(e); }
+    };
 
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -227,6 +270,14 @@ export default function Home() {
                             </button>
                             <button className="brutalist-button flex items-center gap-2">
                                 <Plus className="w-5 h-5" /> Add Funds
+                            </button>
+                            <button onClick={() => setIsQueueOpen(true)} className="brutalist-button relative flex items-center justify-center !px-3">
+                                <Bell className="w-5 h-5" />
+                                {pendingTransactions.length > 0 && (
+                                    <span className="absolute -top-2 -right-2 bg-red-500 text-white font-black font-mono text-xs w-6 h-6 flex items-center justify-center border-2 border-black rounded-full animate-bounce shadow-brutalist">
+                                        {pendingTransactions.length}
+                                    </span>
+                                )}
                             </button>
                             <button onClick={() => setIsSettingsOpen(true)} className="brutalist-button flex items-center justify-center !px-3">
                                 <Settings className="w-5 h-5" />
@@ -561,6 +612,93 @@ export default function Home() {
                                     <Plus className="w-5 h-5" /> Add Another Key
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* QUEUE MODAL */}
+            {isQueueOpen && (
+                <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white border-8 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] w-full max-w-4xl max-h-[80vh] flex flex-col relative">
+                        <button onClick={() => setIsQueueOpen(false)} className="absolute top-4 right-4 z-10 bg-black text-white hover:bg-[#FFDE00] hover:text-black transition-colors p-1 border-2 border-transparent hover:border-black">
+                            <X className="w-6 h-6" />
+                        </button>
+                        
+                        <div className="border-b-4 border-black bg-[#f4f4f4] p-6">
+                            <h2 className="text-3xl font-black uppercase flex items-center gap-3">
+                                <Bell className="w-8 h-8" /> Pending Transactions
+                            </h2>
+                            <p className="font-mono text-sm text-gray-600 mt-2">Approve incoming notifications to add them to your ledger.</p>
+                        </div>
+                        
+                        <div className="flex-1 p-6 overflow-y-auto space-y-4">
+                            {pendingTransactions.length === 0 ? (
+                                <div className="text-center py-12 font-mono font-bold text-gray-500 uppercase">
+                                    Queue is empty. Waiting for notifications...
+                                </div>
+                            ) : (
+                                pendingTransactions.map((tx, idx) => (
+                                    <div key={tx._id} className="border-4 border-black p-4 bg-white hover:bg-[#f4f4f4] transition-colors group">
+                                        <div className="flex flex-col md:flex-row gap-4">
+                                            {/* Left side: Inputs */}
+                                            <div className="flex-1 space-y-3">
+                                                <div>
+                                                    <label className="text-xs font-bold font-mono uppercase">Merchant / Description</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={tx.description} 
+                                                        onChange={(e) => handleQueueChange(idx, "description", e.target.value)}
+                                                        className="w-full border-2 border-black p-2 font-bold focus:outline-none focus:bg-[#FFDE00] transition-colors"
+                                                    />
+                                                </div>
+                                                <div className="flex gap-4">
+                                                    <div className="flex-1">
+                                                        <label className="text-xs font-bold font-mono uppercase">Amount (₹)</label>
+                                                        <input 
+                                                            type="number" 
+                                                            value={tx.amount} 
+                                                            onChange={(e) => handleQueueChange(idx, "amount", e.target.value)}
+                                                            className="w-full border-2 border-black p-2 font-bold font-mono focus:outline-none focus:bg-[#FFDE00] transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <label className="text-xs font-bold font-mono uppercase">Category</label>
+                                                        <select 
+                                                            value={tx.category} 
+                                                            onChange={(e) => handleQueueChange(idx, "category", e.target.value)}
+                                                            className="w-full border-2 border-black p-2 font-bold uppercase focus:outline-none focus:bg-[#FFDE00] transition-colors"
+                                                        >
+                                                            <option value="Fixed">Fixed</option>
+                                                            <option value="Variable">Variable</option>
+                                                            <option value="Income">Income</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs font-mono text-gray-500 mt-2 uppercase">
+                                                    Received: {new Date(tx.createdAt).toLocaleString()}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Right side: Actions */}
+                                            <div className="flex md:flex-col gap-2 justify-center border-t-2 md:border-t-0 md:border-l-2 border-black pt-4 md:pt-0 md:pl-4">
+                                                <button 
+                                                    onClick={() => handleApprove(tx)}
+                                                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-[#00FF00] text-black font-black uppercase tracking-wider px-6 py-4 border-2 border-black hover:-translate-y-1 hover:shadow-brutalist transition-all"
+                                                >
+                                                    <Check className="w-5 h-5" /> Approve
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleReject(tx._id)}
+                                                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-red-500 text-white font-black uppercase tracking-wider px-6 py-4 border-2 border-black hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_#000] transition-all"
+                                                >
+                                                    <Trash2 className="w-5 h-5" /> Reject
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>
