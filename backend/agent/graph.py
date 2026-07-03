@@ -7,6 +7,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
 
 from backend.agent.state import AgentState
@@ -17,7 +18,9 @@ from backend.agent.tools import (
     update_transaction,
     create_goal,
     fund_goal,
-    search_history
+    search_history,
+    web_search,
+    delete_goal
 )
 
 # Neo-Brutalist System Prompt migrated directly from the original Next.js AI API
@@ -38,6 +41,8 @@ CRITICAL RULES:
 7. After executing a tool, provide a concise, brutalist-style confirmation message summarizing the system's action or providing your stark financial advice.
 8. Never invent tools or output raw JSON to the user.
 9. The default currency for all transactions, balances, and advice is the Indian Rupee (INR / ₹). Never refer to dollars or $.
+10. If the user asks for real-time information, market data, prices (e.g., gold, stocks), or news, YOU MUST use the 'web_search' tool to find the answer, then combine it with 'get_financial_data' (if they ask about their affordability) to give personalized advice.
+11. FORMATTING: ALWAYS format your responses using Markdown. Use **bold** for numbers/balances, `#` or `##` for section headings, and `-` for bulleted lists. If summarizing large data (like transactions or goals), NEVER dump raw arrays. Instead, group them into a concise, beautifully structured bulleted list.
 """
 
 tools = [
@@ -47,7 +52,9 @@ tools = [
     update_transaction,
     create_goal,
     fund_goal,
-    search_history
+    delete_goal,
+    search_history,
+    web_search
 ]
 
 # 2. Define the Nodes
@@ -57,6 +64,31 @@ def chatbot(state: AgentState):
     with strictly bound system parameters.
     """
     messages = state["messages"]
+    
+    # CRITICAL FIX: Groq API often crashes (Failed to call a function) when older conversation turns 
+    # contain ToolMessages or AIMessages with tool_calls. 
+    # We filter out tool calls from previous turns to keep the context clean.
+    last_human_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].type == "human":
+            last_human_idx = i
+            break
+            
+    filtered_messages = []
+    for i, m in enumerate(messages):
+        if i < last_human_idx:
+            if m.type == "tool":
+                continue
+            if m.type == "ai":
+                if getattr(m, "tool_calls", None):
+                    if not m.content:
+                        continue
+                    else:
+                        from langchain_core.messages import AIMessage
+                        m = AIMessage(content=m.content)
+        filtered_messages.append(m)
+        
+    messages = filtered_messages
     
     frontend_keys = state.get("api_keys", [])
     valid_keys = [k for k in frontend_keys if k.strip()]
@@ -72,14 +104,26 @@ def chatbot(state: AgentState):
         if not valid_keys:
             valid_keys = ["missing_key"]
 
-    llms = [ChatGroq(api_key=key, model="llama-3.3-70b-versatile", temperature=0) for key in valid_keys]
-    llms_with_tools = [llm.bind_tools(tools) for llm in llms]
-    primary_llm = llms_with_tools[0]
+    all_runnables = []
+    for key in valid_keys:
+        all_runnables.append(ChatGroq(api_key=key, model="llama-3.3-70b-versatile", temperature=0, max_retries=1).bind_tools(tools))
+        all_runnables.append(ChatGroq(api_key=key, model="llama3-8b-8192", temperature=0, max_retries=1).bind_tools(tools))
 
-    if len(llms_with_tools) > 1:
-        llm_with_tools = primary_llm.with_fallbacks(llms_with_tools[1:])
-    else:
-        llm_with_tools = primary_llm
+    # Add OpenRouter Fallbacks
+    openrouter_keys = state.get("openrouter_api_keys", [])
+    valid_or_keys = [k for k in openrouter_keys if k.strip()]
+    for key in valid_or_keys:
+        all_runnables.append(
+            ChatOpenAI(
+                base_url="https://openrouter.ai/api/v1", 
+                api_key=key, 
+                model="meta-llama/llama-3.3-70b-instruct", 
+                temperature=0, 
+                max_retries=1
+            ).bind_tools(tools)
+        )
+
+    llm_with_tools = all_runnables[0].with_fallbacks(all_runnables[1:])
     
     # Prepend the strict system instructions right before evaluating new outputs 
     # guaranteeing rules are prioritized effectively alongside generic memory.
@@ -88,7 +132,13 @@ def chatbot(state: AgentState):
     sys_msg = SystemMessage(content=sys_instruction)
     
     # Invoke model securely with bound capabilities
-    response = llm_with_tools.invoke([sys_msg] + messages)
+    try:
+        response = llm_with_tools.invoke([sys_msg] + messages)
+    except Exception as e:
+        from langchain_core.messages import AIMessage
+        print(f"LLM Invoke Error: {e}")
+        # Fallback graceful response instead of crashing the backend
+        response = AIMessage(content="[SYSTEM]: API validation error occurred while planning tool execution. The agent engine blocked a malformed tool call. Please rephrase your query directly.")
     
     return {"messages": [response]}
 

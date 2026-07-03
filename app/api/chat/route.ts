@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
     try {
-        const { messages, api_keys } = await req.json();
+        const { messages, api_keys, openrouter_api_keys } = await req.json();
         const authHeader = req.headers.get("authorization") || "";
         const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
 
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
                 "Authorization": authHeader,
                 "X-Gemini-Api-Keys": geminiHeader,
             },
-            body: JSON.stringify({ messages, api_keys: api_keys || [] })
+            body: JSON.stringify({ messages, api_keys: api_keys || [], openrouter_api_keys: openrouter_api_keys || [] })
         });
 
         return new Response(response.body, {

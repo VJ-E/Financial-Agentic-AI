@@ -5,6 +5,13 @@ pydantic
 pydantic-settings
 groq
 langchain-groq
+fastapi
+uvicorn
+motor
+pydantic
+pydantic-settings
+groq
+langchain-groq
 langgraph
 qdrant-client
 google-generativeai
@@ -12,3 +19,5 @@ python-dotenv
 bcrypt
 PyJWT
 python-multipart
+ddgs
+langchain-openai

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Send, Plus, ArrowUpRight, ArrowDownRight, CreditCard, IndianRupee, Briefcase, MessageSquare, Settings, X, Key, Bell, Check, Trash2, LogOut, Copy, Image as ImageIcon } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 type Message = {
     role: "user" | "assistant";
     content: string;
@@ -32,6 +33,7 @@ export default function Home() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [apiKeys, setApiKeys] = useState<string[]>([]);
     const [geminiApiKeys, setGeminiApiKeys] = useState<string[]>([]);
+    const [openRouterApiKeys, setOpenRouterApiKeys] = useState<string[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [authUser, setAuthUser] = useState<any>(null);
     const [activeBatch, setActiveBatch] = useState<{ batchId: string, count: number } | null>(null);
@@ -79,6 +81,12 @@ export default function Home() {
             const res = await fetch("/api/finance", { signal: controller.signal, headers: { ...getAuthHeaders() } });
             clearTimeout(timeoutId);
             
+            if (res.status === 401) {
+                localStorage.removeItem("token");
+                localStorage.removeItem("user");
+                window.location.href = "/login";
+                return;
+            }
             if (!res.ok) throw new Error("Failed to fetch dashboard data");
             const data = await res.json();
 
@@ -152,6 +160,12 @@ export default function Home() {
                 headers: { ...getAuthHeaders() },
                 cache: 'no-store'
             });
+            if (res.status === 401) {
+                localStorage.removeItem("token");
+                localStorage.removeItem("user");
+                window.location.href = "/login";
+                return;
+            }
             if (res.ok) {
                 const data = await res.json();
                 if (data.data) {
@@ -191,6 +205,10 @@ export default function Home() {
         if (storedGemini) {
             try { setGeminiApiKeys(JSON.parse(storedGemini)); } catch(e) {}
         }
+        const storedOpenRouter = localStorage.getItem("openrouter_api_keys");
+        if (storedOpenRouter) {
+            try { setOpenRouterApiKeys(JSON.parse(storedOpenRouter)); } catch(e) {}
+        }
     }, []);
 
     const handleQueueChange = (idx: number, field: string, val: any) => {
@@ -200,6 +218,8 @@ export default function Home() {
     };
 
     const handleApprove = async (tx: any) => {
+        // Optimistic UI update
+        setPendingTransactions(prev => prev.filter(p => p._id !== tx._id));
         try {
             await fetch("/api/finance/pending/approve", {
                 method: "POST",
@@ -212,12 +232,47 @@ export default function Home() {
     };
 
     const handleReject = async (tx_id: string) => {
+        // Optimistic UI update
+        setPendingTransactions(prev => prev.filter(p => p._id !== tx_id));
         try {
             await fetch("/api/finance/pending/reject", {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                 body: JSON.stringify({ tx_id })
             });
+            fetchPendingQueue();
+        } catch (e) { console.error(e); }
+    };
+
+    const handleApproveAll = async () => {
+        if (pendingTransactions.length === 0) return;
+        const currentTxs = [...pendingTransactions];
+        setPendingTransactions([]); // Optimistic clear
+        try {
+            await Promise.all(currentTxs.map(tx => 
+                fetch("/api/finance/pending/approve", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                    body: JSON.stringify({ tx_id: tx._id, description: tx.description, amount: Number(tx.amount), category: tx.category })
+                })
+            ));
+            fetchPendingQueue();
+            fetchDashboardData();
+        } catch (e) { console.error(e); }
+    };
+
+    const handleRejectAll = async () => {
+        if (pendingTransactions.length === 0) return;
+        const currentTxs = [...pendingTransactions];
+        setPendingTransactions([]); // Optimistic clear
+        try {
+            await Promise.all(currentTxs.map(tx => 
+                fetch("/api/finance/pending/reject", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                    body: JSON.stringify({ tx_id: tx._id })
+                })
+            ));
             fetchPendingQueue();
         } catch (e) { console.error(e); }
     };
@@ -328,7 +383,7 @@ export default function Home() {
             const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                body: JSON.stringify({ messages: [...messages, userMsg], api_keys: apiKeys }),
+                body: JSON.stringify({ messages: [...messages, userMsg], api_keys: apiKeys, openrouter_api_keys: openRouterApiKeys }),
             });
 
             if (!response.ok) throw new Error("Agent failed to respond.");
@@ -644,7 +699,22 @@ export default function Home() {
                                 <div className="flex gap-2 text-black mt-2">
                                     <span className="font-bold whitespace-nowrap pt-1">{'['}SYS{']'}:</span>
                                     <div className="bg-[#f4f4f4] text-black p-3 border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-sans font-bold w-full md:w-fit max-w-[90%]">
-                                        {msg.content}
+                                        <ReactMarkdown
+                                            components={{
+                                                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                                                strong: ({node, ...props}) => <strong className="font-extrabold" {...props} />,
+                                                em: ({node, ...props}) => <em className="italic" {...props} />,
+                                                h1: ({node, ...props}) => <h1 className="text-xl font-extrabold uppercase border-b-2 border-black mb-2 pb-1" {...props} />,
+                                                h2: ({node, ...props}) => <h2 className="text-lg font-bold uppercase border-b-2 border-black mb-2 pb-1" {...props} />,
+                                                h3: ({node, ...props}) => <h3 className="text-md font-bold uppercase mb-2" {...props} />,
+                                                ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2" {...props} />,
+                                                ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2" {...props} />,
+                                                li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                                                a: ({node, ...props}) => <a className="underline decoration-2 underline-offset-2 hover:bg-black hover:text-white transition-colors" {...props} />
+                                            }}
+                                        >
+                                            {msg.content}
+                                        </ReactMarkdown>
                                     </div>
                                 </div>
                             )}
@@ -864,6 +934,51 @@ export default function Home() {
                                             <Plus className="w-5 h-5" /> Add Another Key
                                         </button>
                                     </div>
+
+                                    {/* OpenRouter Keys */}
+                                    <div className="mt-8">
+                                        <h3 className="text-2xl font-black uppercase mb-2">OpenRouter API Keys (Fallback Layer 2)</h3>
+                                        <p className="font-mono text-sm text-gray-600 mb-6">Enter fallback keys to route through OpenRouter if Groq hits IP rate limits. Saved locally.</p>
+                                        
+                                        <div className="space-y-4">
+                                            {openRouterApiKeys.map((key, index) => (
+                                                <div key={`openrouter-${index}`} className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={key}
+                                                        onChange={(e) => {
+                                                            const newKeys = [...openRouterApiKeys];
+                                                            newKeys[index] = e.target.value;
+                                                            setOpenRouterApiKeys(newKeys);
+                                                            localStorage.setItem("openrouter_api_keys", JSON.stringify(newKeys));
+                                                        }}
+                                                        className="flex-1 p-3 border-4 border-black font-mono text-sm focus:outline-none focus:bg-[#f4f4f4]"
+                                                        placeholder="sk-or-v1-..."
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            const newKeys = openRouterApiKeys.filter((_, i) => i !== index);
+                                                            setOpenRouterApiKeys(newKeys);
+                                                            localStorage.setItem("openrouter_api_keys", JSON.stringify(newKeys));
+                                                        }}
+                                                        className="bg-black text-white p-3 border-4 border-black hover:bg-red-500 hover:text-black transition-colors font-bold uppercase"
+                                                    >
+                                                        <X className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button
+                                                onClick={() => {
+                                                    const newKeys = [...openRouterApiKeys, ""];
+                                                    setOpenRouterApiKeys(newKeys);
+                                                    localStorage.setItem("openrouter_api_keys", JSON.stringify(newKeys));
+                                                }}
+                                                className="brutalist-button w-full flex items-center justify-center gap-2"
+                                            >
+                                                <Plus className="w-5 h-5" /> Add Another OpenRouter Key
+                                            </button>
+                                        </div>
+                                    </div>
                                 </>
                             ) : (
                                 <>
@@ -955,7 +1070,24 @@ export default function Home() {
                             <h2 className="text-3xl font-black uppercase flex items-center gap-3">
                                 <Bell className="w-8 h-8" /> Pending Transactions
                             </h2>
-                            <p className="font-mono text-sm text-gray-600 mt-2">Approve incoming notifications to add them to your ledger.</p>
+                            <p className="font-mono text-sm text-gray-600 mt-2 mb-4">Approve incoming notifications to add them to your ledger.</p>
+                            
+                            {pendingTransactions.length > 0 && (
+                                <div className="flex gap-4 border-t-2 border-black pt-4">
+                                    <button 
+                                        onClick={handleApproveAll}
+                                        className="flex-1 flex items-center justify-center gap-2 bg-[#00FF00] text-black font-black uppercase tracking-wider px-4 py-3 border-2 border-black hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        <Check className="w-5 h-5" /> Approve All
+                                    </button>
+                                    <button 
+                                        onClick={handleRejectAll}
+                                        className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white font-black uppercase tracking-wider px-4 py-3 border-2 border-black hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        <Trash2 className="w-5 h-5" /> Reject All
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         
                         <div className="flex-1 p-6 overflow-y-auto space-y-4">

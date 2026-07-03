@@ -2,6 +2,9 @@ import random
 import string
 import datetime
 from typing import Optional
+import os
+from ddgs import DDGS
+import asyncio
 from bson import ObjectId
 from pymongo import ReturnDocument
 from langchain_core.tools import tool
@@ -106,18 +109,25 @@ async def add_transaction(user_id: str, description: str, amount: float, categor
     transaction_doc["_id"] = tx_id_str
     
     # Sync safely with Qdrant vector db
-    upsert_transaction(
-        user_id=user_id,
-        tx_id=tx_id_str,
-        description=description,
-        amount=abs(amount),
-        category=category,
-        date=str(transaction_doc["date"])
+    try:
+        upsert_transaction(
+            user_id=user_id,
+            tx_id=tx_id_str,
+            description=description,
+            amount=abs(amount),
+            category=category,
+            date=str(transaction_doc["date"])
+        )
+    except Exception as e:
+        print(f"Warning: Failed to sync transaction to Qdrant vector database: {e}")
+    
+    updated_profile = await db.userprofiles.find_one_and_update(
+        {"userId": user_id},
+        {"$inc": {"totalBalance": float(effective_amount)}, "$set": {"updatedAt": datetime.datetime.utcnow()}},
+        return_document=ReturnDocument.AFTER
     )
     
-    profile = await db.userprofiles.find_one({"userId": user_id})
-    
-    if not profile:
+    if not updated_profile:
         profile_doc = {
             "userId": user_id,
             "monthlyIncome": abs(amount) if category == "Income" else 0.0,
@@ -129,11 +139,7 @@ async def add_transaction(user_id: str, description: str, amount: float, categor
         await db.userprofiles.insert_one(profile_doc)
         new_balance = profile_doc["totalBalance"]
     else:
-        new_balance = float(profile.get("totalBalance", 0)) + float(effective_amount)
-        await db.userprofiles.update_one(
-            {"userId": user_id},
-            {"$set": {"totalBalance": new_balance, "updatedAt": datetime.datetime.utcnow()}}
-        )
+        new_balance = updated_profile.get("totalBalance", 0.0)
         
     return {
         "success": True,
@@ -436,3 +442,89 @@ async def search_history(user_id: str, query: str) -> dict:
             "success": False,
             "message": f"Failed to perform semantic search: {str(e)}"
         }
+
+@tool
+async def web_search(query: str) -> dict:
+    """
+    Called when the user asks for real-world information, current events, or prices (e.g., gold, stocks, news).
+    Executes a web search and returns the top snippets.
+    
+    Args:
+        query: The specific question or search term.
+        
+    Returns:
+        A dictionary containing the search snippets or an error message.
+    """
+    try:
+        def fetch_results():
+            return DDGS().text(query, max_results=5)
+        
+        results = await asyncio.to_thread(fetch_results)
+        if not results:
+            return {"success": False, "message": f"No results found for query: {query}"}
+            
+        snippets = []
+        for item in results:
+            title = item.get("title", "")
+            content = item.get("body", "")
+            if content:
+                snippets.append(f"Title: {title}\nSnippet: {content}")
+                
+        return {
+            "success": True,
+            "data": "\n\n".join(snippets)
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Web search failed: {str(e)}"
+        }
+
+@tool
+async def delete_goal(user_id: str, goal_id: str) -> dict:
+    """
+    Deletes an active savings goal. Any funds saved in this goal are returned to the user's main balance.
+    
+    Args:
+        user_id: The generic unique identifier of the user.
+        goal_id: The short 4-character ID of the goal to delete.
+        
+    Returns:
+        A dictionary indicating success and the user's updated balance.
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    profile = await db.userprofiles.find_one({"userId": user_id})
+    if not profile:
+        return {"success": False, "message": "User profile not found."}
+        
+    goals = profile.get("activeSavingsGoals", [])
+    target_goal = None
+    for g in goals:
+        if g.get("shortId", "").lower() == goal_id.lower():
+            target_goal = g
+            break
+            
+    if not target_goal:
+        return {"success": False, "message": "Goal not found. Use get_financial_data to check IDs."}
+        
+    refund_amount = float(target_goal.get("currentAmount", 0.0))
+    new_balance = float(profile.get("totalBalance", 0.0)) + refund_amount
+    
+    await db.userprofiles.update_one(
+        {"userId": user_id},
+        {
+            "$set": {"totalBalance": new_balance},
+            "$pull": {"activeSavingsGoals": {"shortId": target_goal["shortId"]}}
+        }
+    )
+    
+    return {
+        "success": True,
+        "message": f"Goal '{target_goal['title']}' deleted. ₹{refund_amount} refunded to main balance.",
+        "data": {
+            "newBalance": new_balance
+        }
+    }
