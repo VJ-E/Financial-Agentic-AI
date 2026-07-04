@@ -17,7 +17,7 @@ export default function HomeTab({ financeData }: HomeTabProps) {
             financeData.recentTransactions.forEach((tx: any) => {
                 const txDate = new Date(tx.date);
                 if (txDate >= thirtyDaysAgo) {
-                    if (tx.amount > 0) credited += tx.amount;
+                    if (tx.category === 'Income') credited += Math.abs(tx.amount);
                     else debited += Math.abs(tx.amount);
                 }
             });
@@ -33,9 +33,9 @@ export default function HomeTab({ financeData }: HomeTabProps) {
             <h1 className="text-4xl font-black uppercase tracking-tight text-black border-b-4 border-black pb-2">Home</h1>
             
             {/* Balance Card */}
-            <div className="bg-[#0055ff] text-white p-6 border-[3px] border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                <p className="font-mono text-sm font-bold uppercase tracking-wider mb-1 text-white/80">Current Balance</p>
-                <div className="text-5xl md:text-6xl font-black tracking-tighter break-words">
+            <div className="bg-[#008CD4] p-6 border-[3px] border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                <p className="font-mono text-sm font-bold uppercase tracking-wider mb-1 text-black">Current Balance</p>
+                <div className="text-5xl md:text-6xl font-black tracking-tighter break-words text-black">
                     {formatCurrency(financeData?.summary?.balance || 0)}
                 </div>
             </div>
@@ -44,12 +44,12 @@ export default function HomeTab({ financeData }: HomeTabProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white p-4 border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-[#0055ff] p-1.5 border-2 border-black rounded-full">
+                        <div className="bg-[#008CD4] p-1.5 border-2 border-black rounded-full">
                             <ArrowUpRight className="w-5 h-5 text-white" strokeWidth={3} />
                         </div>
                         <p className="font-bold uppercase text-sm">Credited (30d)</p>
                     </div>
-                    <p className="text-2xl font-black text-[#0055ff]">{formatCurrency(credited30)}</p>
+                    <p className="text-2xl font-black text-[#008CD4]">{formatCurrency(credited30)}</p>
                 </div>
                 <div className="bg-white p-4 border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center gap-2 mb-2">
@@ -75,8 +75,8 @@ export default function HomeTab({ financeData }: HomeTabProps) {
                                     <p className="font-bold text-lg leading-tight">{tx.description}</p>
                                     <p className="font-mono text-xs text-gray-500 mt-1">{new Date(tx.date).toLocaleDateString()} &bull; {tx.category || 'Expense'}</p>
                                 </div>
-                                <div className={`font-black text-xl ${tx.amount > 0 ? 'text-[#0055ff]' : 'text-black'}`}>
-                                    {tx.amount > 0 ? '+' : ''}{formatCurrency(tx.amount)}
+                                <div className={`font-black text-xl ${tx.category === 'Income' ? 'text-[#008CD4]' : 'text-black'}`}>
+                                    {tx.category === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
                                 </div>
                             </div>
                         ))}

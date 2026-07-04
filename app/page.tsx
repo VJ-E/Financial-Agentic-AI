@@ -480,6 +480,11 @@ export default function Home() {
                         handleSubmit={handleSubmit}
                         isLoading={isLoading}
                         messagesEndRef={messagesEndRef}
+                        fileInputRef={fileInputRef}
+                        handleImageUpload={handleImageUpload}
+                        isUploading={isUploading}
+                        selectedImageFile={selectedImageFile}
+                        setSelectedImageFile={setSelectedImageFile}
                     />
                 )}
                 {activeTab === 'notifications' && (
@@ -512,28 +517,28 @@ export default function Home() {
             <nav className="border-t-4 border-black flex z-50 bg-white" style={{ minHeight: '70px' }}>
                 <button 
                     onClick={() => setActiveTab('analysis')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'analysis' ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'analysis' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <BarChart2 className="w-6 h-6" strokeWidth={3} />
                     <span className="text-[10px] font-black uppercase hidden sm:block">Analysis</span>
                 </button>
                 <button 
                     onClick={() => setActiveTab('home')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'home' ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'home' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <HomeIcon className="w-6 h-6" strokeWidth={3} />
                     <span className="text-[10px] font-black uppercase hidden sm:block">Home</span>
                 </button>
                 <button 
                     onClick={() => setActiveTab('chat')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'chat' ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'chat' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <MessageSquare className="w-6 h-6" strokeWidth={3} />
                     <span className="text-[10px] font-black uppercase hidden sm:block">Agent</span>
                 </button>
                 <button 
                     onClick={() => setActiveTab('notifications')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black relative transition-colors ${activeTab === 'notifications' ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black relative transition-colors ${activeTab === 'notifications' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <div className="relative">
                         <Bell className="w-6 h-6" strokeWidth={3} />
@@ -548,7 +553,7 @@ export default function Home() {
                 </button>
                 <button 
                     onClick={() => setActiveTab('settings')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === 'settings' ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === 'settings' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <Settings className="w-6 h-6" strokeWidth={3} />
                     <span className="text-[10px] font-black uppercase hidden sm:block">Settings</span>

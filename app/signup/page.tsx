@@ -126,7 +126,7 @@ export default function SignupPage() {
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full bg-black text-white font-black uppercase tracking-widest py-4 text-lg border-4 border-black hover:bg-[#0055ff] hover:text-white transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                        className="w-full bg-black text-white font-black uppercase tracking-widest py-4 text-lg border-4 border-black hover:bg-[#008CD4] hover:text-white transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                     >
                         <UserPlus className="w-6 h-6" />
                         {isLoading ? "CREATING ACCOUNT..." : "CREATE ACCOUNT"}
@@ -134,7 +134,7 @@ export default function SignupPage() {
 
                     <p className="text-center font-bold text-sm uppercase">
                         Already have an account?{" "}
-                        <a href="/login" className="underline underline-offset-4 decoration-4 hover:bg-[#0055ff] hover:text-white px-1 transition-colors">
+                        <a href="/login" className="underline underline-offset-4 decoration-4 hover:bg-[#008CD4] hover:text-white px-1 transition-colors">
                             Login
                         </a>
                     </p>

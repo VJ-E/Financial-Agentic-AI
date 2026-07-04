@@ -10,11 +10,11 @@ export async function GET(req: Request) {
         const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
 
         const response = await fetch(`${BACKEND_URL}/finance`, {
-            cache: 'no-store',
-            headers: {
+            headers: { 
                 "Authorization": authHeader,
-                "X-Gemini-Api-Keys": geminiHeader,
-            }
+                "X-Gemini-Api-Keys": geminiHeader 
+            },
+            cache: 'no-store'
         });
 
         if (!response.ok) {

@@ -10,7 +10,8 @@ export async function GET(req: Request) {
             headers: { 
                 "Authorization": authHeader,
                 "X-Gemini-Api-Keys": geminiHeader 
-            }
+            },
+            cache: 'no-store'
         });
         const data = await response.json();
         return NextResponse.json(data);

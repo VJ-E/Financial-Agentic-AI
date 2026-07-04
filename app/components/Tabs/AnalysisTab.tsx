@@ -43,7 +43,7 @@ export default function AnalysisTab({ financeData }: AnalysisTabProps) {
 
     const chartData = useMemo(() => {
         return [
-            { name: 'Income', amount: metrics.income, fill: '#0055ff' },
+            { name: 'Income', amount: metrics.income, fill: '#008CD4' },
             { name: 'Expense', amount: metrics.expense, fill: '#000000' }
         ];
     }, [metrics]);
@@ -62,7 +62,7 @@ export default function AnalysisTab({ financeData }: AnalysisTabProps) {
                         key={tf}
                         onClick={() => setTimeframe(tf as any)}
                         className={`flex-1 py-3 font-bold uppercase text-xs sm:text-sm border-r-4 border-black last:border-r-0 transition-colors ${
-                            timeframe === tf ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'
+                            timeframe === tf ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'
                         }`}
                     >
                         {tf}
@@ -74,13 +74,13 @@ export default function AnalysisTab({ financeData }: AnalysisTabProps) {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="bg-white border-[3px] border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <p className="font-bold uppercase text-xs text-gray-500 mb-1">Income</p>
-                    <p className="text-xl md:text-2xl font-black text-[#0055ff] break-words">{formatCurrency(metrics.income)}</p>
+                    <p className="text-xl md:text-2xl font-black text-[#008CD4] break-words">{formatCurrency(metrics.income)}</p>
                 </div>
                 <div className="bg-white border-[3px] border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <p className="font-bold uppercase text-xs text-gray-500 mb-1">Expense</p>
                     <p className="text-xl md:text-2xl font-black text-black break-words">{formatCurrency(metrics.expense)}</p>
                 </div>
-                <div className="col-span-2 md:col-span-1 bg-[#0055ff] text-white border-[3px] border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="col-span-2 md:col-span-1 bg-[#008CD4] text-white border-[3px] border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <p className="font-bold uppercase text-xs text-white/80 mb-1">Net Cashflow</p>
                     <p className="text-xl md:text-2xl font-black break-words">{formatCurrency(metrics.net)}</p>
                 </div>
@@ -99,7 +99,7 @@ export default function AnalysisTab({ financeData }: AnalysisTabProps) {
                             contentStyle={{ backgroundColor: '#fff', border: '3px solid #000', borderRadius: 0, boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)', fontWeight: 'bold' }}
                             formatter={(value: number) => formatCurrency(value)}
                         />
-                        <Bar dataKey="amount" fill="#0055ff" stroke="#000" strokeWidth={3} radius={0} />
+                        <Bar dataKey="amount" fill="#008CD4" stroke="#000" strokeWidth={3} radius={0} />
                     </BarChart>
                 </ResponsiveContainer>
             </div>

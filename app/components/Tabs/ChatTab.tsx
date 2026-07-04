@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, LogOut } from 'lucide-react';
+import { Send, LogOut, Image as ImageIcon, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface ChatTabProps {
@@ -9,13 +9,18 @@ interface ChatTabProps {
     handleSubmit: (e: React.FormEvent) => void;
     isLoading: boolean;
     messagesEndRef: React.RefObject<HTMLDivElement>;
+    fileInputRef: React.RefObject<HTMLInputElement>;
+    handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    isUploading: boolean;
+    selectedImageFile: File | null;
+    setSelectedImageFile: (file: File | null) => void;
 }
 
-export default function ChatTab({ messages, input, setInput, handleSubmit, isLoading, messagesEndRef }: ChatTabProps) {
+export default function ChatTab({ messages, input, setInput, handleSubmit, isLoading, messagesEndRef, fileInputRef, handleImageUpload, isUploading, selectedImageFile, setSelectedImageFile }: ChatTabProps) {
     return (
         <div className="flex flex-col h-[calc(100vh-80px)] max-w-4xl mx-auto bg-white border-x-4 border-black">
             {/* Header */}
-            <div className="p-4 border-b-4 border-black bg-[#0055ff] flex justify-between items-center">
+            <div className="p-4 border-b-4 border-black bg-[#008CD4] flex justify-between items-center">
                 <h2 className="text-xl font-black uppercase tracking-tight text-white">Agent Chat</h2>
             </div>
             
@@ -41,7 +46,7 @@ export default function ChatTab({ messages, input, setInput, handleSubmit, isLoa
                                         <span className="font-bold whitespace-nowrap pt-1 text-black">{'['}SYS{']'}:</span>
                                     )}
                                     <div className={`p-4 border-[3px] border-black font-sans w-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
-                                        m.role === 'user' ? 'bg-[#0055ff] text-white font-bold' : 'bg-white text-black font-medium'
+                                        m.role === 'user' ? 'bg-[#008CD4] text-white font-bold' : 'bg-white text-black font-medium'
                                     }`}>
                                         {m.role === 'assistant' ? (
                                             <ReactMarkdown
@@ -86,19 +91,36 @@ export default function ChatTab({ messages, input, setInput, handleSubmit, isLoa
             </div>
             
             {/* Input Area */}
-            <div className="p-4 bg-white border-t-4 border-black">
+            <div className="p-4 bg-white border-t-4 border-black flex flex-col gap-2">
+                {selectedImageFile && (
+                    <div className="flex items-center justify-between bg-[#f4f4f4] border-4 border-black p-2">
+                        <span className="font-mono text-sm font-bold truncate pr-4">{selectedImageFile.name}</span>
+                        <button type="button" onClick={() => setSelectedImageFile(null)} className="text-red-500 hover:text-black">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                )}
                 <form onSubmit={handleSubmit} className="flex gap-2">
+                    <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+                    <button 
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isLoading || isUploading}
+                        className="bg-black text-white p-3 md:p-4 border-4 border-black hover:bg-[#008CD4] disabled:opacity-50 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex-shrink-0"
+                    >
+                        <ImageIcon className="w-5 h-5 md:w-6 md:h-6" />
+                    </button>
                     <input
                         className="flex-1 p-3 md:p-4 font-mono font-bold text-sm md:text-base border-4 border-black bg-[#f4f4f4] focus:outline-none focus:bg-white transition-colors placeholder:text-gray-500 rounded-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="EXECUTE COMMAND..."
-                        disabled={isLoading}
+                        placeholder={isUploading ? "UPLOADING..." : "EXECUTE COMMAND..."}
+                        disabled={isLoading || isUploading}
                     />
                     <button 
                         type="submit"
-                        disabled={isLoading || !input.trim()}
-                        className="bg-black text-white p-3 md:p-4 border-4 border-black hover:bg-[#0055ff] disabled:opacity-50 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group"
+                        disabled={isLoading || isUploading || (!input.trim() && !selectedImageFile)}
+                        className="bg-black text-white p-3 md:p-4 border-4 border-black hover:bg-[#008CD4] disabled:opacity-50 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group flex-shrink-0"
                     >
                         <Send className="w-5 h-5 md:w-6 md:h-6 group-hover:translate-x-1 transition-transform" />
                     </button>

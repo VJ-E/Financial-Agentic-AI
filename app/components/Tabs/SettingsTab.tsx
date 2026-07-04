@@ -39,13 +39,13 @@ export default function SettingsTab({
             <div className="flex border-4 border-black bg-white overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
                 <button 
                     onClick={() => setSettingsTab('api_keys')}
-                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base border-r-4 border-black transition-colors flex items-center justify-center gap-2 ${settingsTab === 'api_keys' ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base border-r-4 border-black transition-colors flex items-center justify-center gap-2 ${settingsTab === 'api_keys' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <Key className="w-5 h-5" /> API Keys
                 </button>
                 <button 
                     onClick={() => setSettingsTab('account')}
-                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base transition-colors flex items-center justify-center gap-2 ${settingsTab === 'account' ? 'bg-[#0055ff] text-white' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base transition-colors flex items-center justify-center gap-2 ${settingsTab === 'account' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <Settings className="w-5 h-5" /> Account
                 </button>

@@ -25,7 +25,7 @@ export default function NotificationsTab({
                 <h1 className="text-4xl font-black uppercase tracking-tight text-black flex items-center gap-3">
                     <Bell className="w-8 h-8" strokeWidth={3} /> Notifications
                 </h1>
-                <div className="bg-[#0055ff] text-white px-3 py-1 font-black text-xl border-2 border-black">
+                <div className="bg-[#008CD4] text-black px-3 py-1 font-black text-xl border-2 border-black">
                     {pendingTransactions.length}
                 </div>
             </div>
@@ -55,8 +55,8 @@ export default function NotificationsTab({
                                         <p className="font-bold text-lg leading-tight uppercase">{tx.description}</p>
                                         <p className="font-mono text-sm text-gray-600 mt-1">{new Date(tx.date).toLocaleString()}</p>
                                     </div>
-                                    <div className="font-black text-xl text-black bg-[#f4f4f4] px-2 py-1 border-2 border-black flex items-center">
-                                        <IndianRupee className="w-4 h-4 mr-1" /> {formatCurrency(tx.amount)}
+                                    <div className={`font-black text-xl ${tx.category === 'Income' ? 'text-[#008CD4]' : 'text-black'} bg-[#f4f4f4] px-2 py-1 border-2 border-black flex items-center`}>
+                                        <IndianRupee className="w-4 h-4 mr-1" /> {tx.category === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
@@ -79,7 +79,7 @@ export default function NotificationsTab({
                 </>
             ) : (
                 <div className="bg-white border-[3px] border-black p-12 text-center shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                    <Check className="w-16 h-16 mx-auto mb-4 text-[#0055ff]" strokeWidth={3} />
+                    <Check className="w-16 h-16 mx-auto mb-4 text-[#008CD4]" strokeWidth={3} />
                     <h3 className="text-2xl font-black uppercase mb-2">All Caught Up!</h3>
                     <p className="font-mono text-gray-600">You have no pending transactions to approve.</p>
                 </div>
