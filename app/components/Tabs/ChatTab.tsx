@@ -21,7 +21,7 @@ export default function ChatTab({ messages, input, setInput, handleSubmit, isLoa
         <div className="flex flex-col h-[calc(100vh-80px)] max-w-4xl mx-auto bg-white border-x-4 border-black">
             {/* Header */}
             <div className="p-4 border-b-4 border-black bg-[#008CD4] flex justify-between items-center">
-                <h2 className="text-xl font-black uppercase tracking-tight text-white">Agent Chat</h2>
+                <h2 className="text-xl font-black uppercase tracking-tight text-black">Agent Chat</h2>
             </div>
             
             {/* Messages Area */}

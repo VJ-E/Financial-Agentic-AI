@@ -470,8 +470,14 @@ export default function Home() {
         <div className="h-screen w-full flex flex-col font-sans bg-[#f4f4f4] text-black overflow-hidden relative">
             {/* MAIN CONTENT AREA */}
             <main className="flex-1 overflow-y-auto w-full relative z-10">
-                {activeTab === 'analysis' && <AnalysisTab financeData={financeData} />}
-                {activeTab === 'home' && <HomeTab financeData={financeData} />}
+                {activeTab === 'analysis' && (
+                    <AnalysisTab 
+                        financeData={financeData} 
+                        getAuthHeaders={getAuthHeaders}
+                        fetchDashboardData={fetchDashboardData}
+                    />
+                )}
+                {activeTab === 'home' && <HomeTab financeData={financeData} getAuthHeaders={getAuthHeaders} fetchDashboardData={fetchDashboardData} />}
                 {activeTab === 'chat' && (
                     <ChatTab 
                         messages={messages}

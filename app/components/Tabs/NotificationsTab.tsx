@@ -32,18 +32,18 @@ export default function NotificationsTab({
 
             {pendingTransactions.length > 0 ? (
                 <>
-                    <div className="flex gap-4">
+                    <div className="flex flex-col sm:flex-row gap-3">
                         <button 
                             onClick={handleApproveAll}
-                            className="flex-1 brutalist-button bg-[#4ecdc4] flex items-center justify-center gap-2"
+                            className="flex-1 bg-white text-black hover:bg-[#008CD4] hover:text-black font-black uppercase py-4 border-[3px] border-black flex justify-center items-center gap-2 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                         >
-                            <Check className="w-5 h-5" strokeWidth={3} /> Approve All
+                            <Check className="w-6 h-6" strokeWidth={3} /> Approve All
                         </button>
                         <button 
                             onClick={handleRejectAll}
-                            className="flex-1 brutalist-button bg-[#ff6b6b] flex items-center justify-center gap-2"
+                            className="flex-1 bg-white text-black hover:bg-red-500 hover:text-white font-black uppercase py-4 border-[3px] border-black flex justify-center items-center gap-2 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                         >
-                            <Trash2 className="w-5 h-5" strokeWidth={3} /> Reject All
+                            <Trash2 className="w-6 h-6" strokeWidth={3} /> Reject All
                         </button>
                     </div>
 

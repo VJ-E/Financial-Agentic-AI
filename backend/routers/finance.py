@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Header, HTTPException, Depends, Request
 import os
-from backend.agent.tools import get_financial_data, add_transaction
+from backend.agent.tools import get_financial_data, add_transaction, update_transaction, delete_transaction
 from backend.auth_utils import get_current_user
 from backend.context import gemini_api_keys_var
 import json
 from pydantic import BaseModel
+from typing import Optional
 from bson import ObjectId
 import datetime
 from backend.db.mongo import db_manager
@@ -18,6 +19,12 @@ class ApproveRequest(BaseModel):
     description: str
     amount: float
     category: str
+
+
+class TransactionUpdateRequest(BaseModel):
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    category: Optional[str] = None
 
 
 class IngestRequest(BaseModel):
@@ -102,6 +109,47 @@ async def get_pending_transactions(req: Request, user: dict = Depends(get_curren
     for p in pending:
         p["_id"] = str(p["_id"])
     return {"success": True, "data": pending}
+
+
+@router.put("/finance/transaction/{tx_id}")
+async def update_tx(req: Request, tx_id: str, payload: TransactionUpdateRequest, user: dict = Depends(get_current_user)):
+    gemini_keys_str = req.headers.get("X-Gemini-Api-Keys")
+    if gemini_keys_str:
+        try:
+            gemini_api_keys_var.set(json.loads(gemini_keys_str))
+        except:
+            pass
+
+    result = await update_transaction.ainvoke({
+        "user_id": user["user_id"],
+        "transaction_id": tx_id,
+        "new_amount": payload.amount,
+        "new_description": payload.description,
+        "new_category": payload.category
+    })
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message"))
+    return result
+
+
+@router.delete("/finance/transaction/{tx_id}")
+async def delete_tx(req: Request, tx_id: str, user: dict = Depends(get_current_user)):
+    gemini_keys_str = req.headers.get("X-Gemini-Api-Keys")
+    if gemini_keys_str:
+        try:
+            gemini_api_keys_var.set(json.loads(gemini_keys_str))
+        except:
+            pass
+
+    result = await delete_transaction.ainvoke({
+        "user_id": user["user_id"],
+        "transaction_id": tx_id
+    })
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message"))
+    return result
 
 
 @router.post("/finance/pending/{tx_id}/approve")

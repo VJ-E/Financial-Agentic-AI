@@ -1,11 +1,15 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { IndianRupee, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import TransactionModal from '../Modals/TransactionModal';
 
 interface HomeTabProps {
     financeData: any;
+    getAuthHeaders: () => any;
+    fetchDashboardData: () => void;
 }
 
-export default function HomeTab({ financeData }: HomeTabProps) {
+export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardData }: HomeTabProps) {
+    const [selectedTx, setSelectedTx] = useState<any>(null);
     // Compute credited vs debited for past 30 days from recentTransactions
     const { credited30, debited30 } = useMemo(() => {
         let credited = 0;
@@ -47,16 +51,16 @@ export default function HomeTab({ financeData }: HomeTabProps) {
                         <div className="bg-[#008CD4] p-1.5 border-2 border-black rounded-full">
                             <ArrowUpRight className="w-5 h-5 text-white" strokeWidth={3} />
                         </div>
-                        <p className="font-bold uppercase text-sm">Credited (30d)</p>
+                        <p className="font-bold uppercase text-sm">Credited</p>
                     </div>
-                    <p className="text-2xl font-black text-[#008CD4]">{formatCurrency(credited30)}</p>
+                    <p className="text-2xl font-black text-black">{formatCurrency(credited30)}</p>
                 </div>
                 <div className="bg-white p-4 border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center gap-2 mb-2">
                         <div className="bg-black p-1.5 border-2 border-black rounded-full">
                             <ArrowDownRight className="w-5 h-5 text-white" strokeWidth={3} />
                         </div>
-                        <p className="font-bold uppercase text-sm">Debited (30d)</p>
+                        <p className="font-bold uppercase text-sm">Debited</p>
                     </div>
                     <p className="text-2xl font-black text-black">{formatCurrency(debited30)}</p>
                 </div>
@@ -70,7 +74,7 @@ export default function HomeTab({ financeData }: HomeTabProps) {
                 {financeData?.recentTransactions && financeData.recentTransactions.length > 0 ? (
                     <div className="space-y-3">
                         {financeData.recentTransactions.slice(0, 10).map((tx: any, idx: number) => (
-                            <div key={idx} className="bg-white border-[3px] border-black p-4 flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform cursor-pointer">
+                            <div key={idx} onClick={() => setSelectedTx(tx)} className="bg-white border-[3px] border-black p-4 flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform cursor-pointer">
                                 <div>
                                     <p className="font-bold text-lg leading-tight">{tx.description}</p>
                                     <p className="font-mono text-xs text-gray-500 mt-1">{new Date(tx.date).toLocaleDateString()} &bull; {tx.category || 'Expense'}</p>
@@ -87,6 +91,15 @@ export default function HomeTab({ financeData }: HomeTabProps) {
                     </div>
                 )}
             </div>
+            
+            {selectedTx && (
+                <TransactionModal
+                    transaction={selectedTx}
+                    onClose={() => setSelectedTx(null)}
+                    onRefresh={fetchDashboardData}
+                    getAuthHeaders={getAuthHeaders}
+                />
+            )}
         </div>
     );
 }
