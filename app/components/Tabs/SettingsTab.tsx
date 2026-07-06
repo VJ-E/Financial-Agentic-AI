@@ -56,9 +56,13 @@ export default function SettingsTab({
             });
             if (res.ok) {
                 window.location.reload();
+            } else {
+                const text = await res.text();
+                alert("Nuke Failed (Did you restart the Python backend?): " + text);
             }
         } catch (e) {
             console.error(e);
+            alert("Network error: " + String(e));
         }
         setIsNuking(false);
     };

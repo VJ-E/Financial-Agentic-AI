@@ -60,9 +60,13 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
             if (res.ok) {
                 fetchDashboardData();
                 setIsEditingBalance(false);
+            } else {
+                const text = await res.text();
+                alert("Save Failed (Did you restart the Python backend?): " + text);
             }
         } catch (e) {
             console.error(e);
+            alert("Network error: " + String(e));
         }
         setIsSavingBalance(false);
     };
