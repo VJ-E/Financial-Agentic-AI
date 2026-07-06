@@ -52,8 +52,8 @@ export default function NotificationsTab({
                             <div key={tx._id} className="bg-white border-[3px] border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
-                                        <p className="font-bold text-lg leading-tight uppercase">{tx.description}</p>
-                                        <p className="font-mono text-sm text-gray-600 mt-1">{new Date(tx.date).toLocaleString()}</p>
+                                        <p className="font-bold text-lg leading-tight uppercase">{tx.name || tx.description}</p>
+                                        <p className="font-mono text-sm text-gray-600 mt-1">{new Date(tx.createdAt || tx.date).toLocaleString()}</p>
                                     </div>
                                     <div className={`font-black text-xl ${tx.category === 'Income' ? 'text-[#008CD4]' : 'text-black'} bg-[#f4f4f4] px-2 py-1 border-2 border-black flex items-center`}>
                                         <IndianRupee className="w-4 h-4 mr-1" /> {tx.category === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}

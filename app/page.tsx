@@ -18,6 +18,8 @@ const fallbackSummaryData = {
     income: 0,
     expenses: 0,
     balance: 0,
+    bankBalance: 0,
+    cashBalance: 0,
 };
 
 const defaultTopSpending = [
@@ -46,6 +48,7 @@ export default function Home() {
     const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
     const [settingsTab, setSettingsTab] = useState<'api_keys' | 'account'>('api_keys');
     const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    const [transactionSource, setTransactionSource] = useState<'all' | 'bank' | 'cash'>('all');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleChangePassword = async (e: React.FormEvent) => {
@@ -73,6 +76,20 @@ export default function Home() {
         } catch (err) {
             console.error(err);
             alert("An error occurred while changing password.");
+        }
+    };
+
+    const saveKeysToBackend = async (groq: string[], gemini: string[], openRouter: string[]) => {
+        try {
+            const res = await fetch("/api/user/keys", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                body: JSON.stringify({ groq, gemini, openRouter })
+            });
+            if (res.ok) alert("API keys saved securely to your account!");
+            else alert("Failed to save API keys.");
+        } catch(e) {
+            alert("Failed to save API keys.");
         }
     };
 
@@ -137,6 +154,8 @@ export default function Home() {
                     income: calculatedIncome || 0,
                     expenses: calculatedExpenses || 0,
                     balance: data.profile.totalBalance || 0,
+                    bankBalance: data.profile.bankBalance || 0,
+                    cashBalance: data.profile.cashBalance || 0,
                 });
 
                 if (data.profile.activeSavingsGoals) {
@@ -229,18 +248,22 @@ export default function Home() {
         }
         fetchDashboardData();
         fetchPendingQueue();
-        const storedKeys = localStorage.getItem("gpay_agent_api_keys");
-        if (storedKeys) {
-            try { setApiKeys(JSON.parse(storedKeys)); } catch(e) {}
-        }
-        const storedGemini = localStorage.getItem("gemini_api_keys");
-        if (storedGemini) {
-            try { setGeminiApiKeys(JSON.parse(storedGemini)); } catch(e) {}
-        }
-        const storedOpenRouter = localStorage.getItem("openrouter_api_keys");
-        if (storedOpenRouter) {
-            try { setOpenRouterApiKeys(JSON.parse(storedOpenRouter)); } catch(e) {}
-        }
+        
+        // Fetch keys from backend
+        fetch("/api/user/keys", {
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.data) {
+                setApiKeys(data.data.groq || []);
+                setGeminiApiKeys(data.data.gemini || []);
+                setOpenRouterApiKeys(data.data.openRouter || []);
+            }
+        })
+        .catch(err => console.error("Failed to load keys", err));
     }, []);
 
     const handleQueueChange = (idx: number, field: string, val: any) => {
@@ -475,9 +498,21 @@ export default function Home() {
                         financeData={financeData} 
                         getAuthHeaders={getAuthHeaders}
                         fetchDashboardData={fetchDashboardData}
+                        transactionSource={transactionSource}
+                        setTransactionSource={setTransactionSource}
+                        rawProfile={summaryData}
                     />
                 )}
-                {activeTab === 'home' && <HomeTab financeData={financeData} getAuthHeaders={getAuthHeaders} fetchDashboardData={fetchDashboardData} />}
+                {activeTab === 'home' && (
+                    <HomeTab 
+                        financeData={financeData} 
+                        getAuthHeaders={getAuthHeaders} 
+                        fetchDashboardData={fetchDashboardData} 
+                        transactionSource={transactionSource}
+                        setTransactionSource={setTransactionSource}
+                        rawProfile={summaryData}
+                    />
+                )}
                 {activeTab === 'chat' && (
                     <ChatTab 
                         messages={messages}
@@ -515,6 +550,8 @@ export default function Home() {
                         passwordForm={passwordForm}
                         setPasswordForm={setPasswordForm}
                         handleChangePassword={handleChangePassword}
+                        saveKeysToBackend={() => saveKeysToBackend(apiKeys, geminiApiKeys, openRouterApiKeys)}
+                        getAuthHeaders={getAuthHeaders}
                     />
                 )}
             </main>

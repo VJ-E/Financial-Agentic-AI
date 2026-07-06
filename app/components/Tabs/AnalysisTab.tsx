@@ -7,10 +7,15 @@ interface AnalysisTabProps {
     financeData: any;
     getAuthHeaders: () => any;
     fetchDashboardData: () => void;
+    transactionSource: 'all' | 'bank' | 'cash';
+    setTransactionSource: (val: 'all' | 'bank' | 'cash') => void;
+    rawProfile: any;
 }
 
-export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboardData }: AnalysisTabProps) {
+export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboardData, transactionSource, setTransactionSource, rawProfile }: AnalysisTabProps) {
     const [timeframe, setTimeframe] = useState<'day' | 'week' | 'month' | 'overall'>('month');
+    const [baseDate, setBaseDate] = useState<Date>(new Date());
+    const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
     const [selectedTx, setSelectedTx] = useState<any>(null);
     const [limit, setLimit] = useState(10);
 
@@ -22,20 +27,41 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
     const { metrics, filteredTxs } = useMemo(() => {
         let income = 0;
         let expense = 0;
-        const now = new Date();
         const txs = financeData?.recentTransactions || [];
         const filtered: any[] = [];
 
-        txs.forEach((tx: any) => {
-            const txDate = new Date(tx.date);
-            const diffTime = Math.abs(now.getTime() - txDate.getTime());
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        // Determine start and end of the current timeframe based on baseDate
+        let start = new Date(baseDate);
+        start.setHours(0, 0, 0, 0);
+        let end = new Date(baseDate);
+        end.setHours(23, 59, 59, 999);
 
+        if (timeframe === 'week') {
+            const day = start.getDay();
+            const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+            start.setDate(diff);
+            end = new Date(start);
+            end.setDate(end.getDate() + 6);
+            end.setHours(23, 59, 59, 999);
+        } else if (timeframe === 'month') {
+            start.setDate(1);
+            end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
+        }
+
+        txs.forEach((tx: any) => {
+            const txSource = tx.source || 'bank';
+            if (transactionSource !== 'all' && txSource !== transactionSource) return;
+
+            const txDate = new Date(tx.date);
             let include = false;
-            if (timeframe === 'overall') include = true;
-            else if (timeframe === 'day' && diffDays <= 1) include = true;
-            else if (timeframe === 'week' && diffDays <= 7) include = true;
-            else if (timeframe === 'month' && diffDays <= 30) include = true;
+
+            if (timeframe === 'overall') {
+                include = true;
+            } else {
+                if (txDate >= start && txDate <= end) {
+                    include = true;
+                }
+            }
 
             if (include) {
                 filtered.push(tx);
@@ -44,8 +70,8 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
             }
         });
 
-        // Use backend summary for overall metrics instead of computing
-        if (timeframe === 'overall') {
+        // Use backend summary for overall metrics if 'all' sources are selected
+        if (timeframe === 'overall' && transactionSource === 'all') {
             income = financeData?.summary?.income || 0;
             expense = financeData?.summary?.expenses || 0;
         }
@@ -54,7 +80,7 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
             metrics: { income, expense, net: income - expense },
             filteredTxs: filtered
         };
-    }, [financeData, timeframe]);
+    }, [financeData, timeframe, baseDate, transactionSource]);
 
     const chartData = useMemo(() => {
         return [
@@ -68,14 +94,28 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
 
     return (
         <div className="p-4 md:p-8 space-y-6 pb-24 max-w-4xl mx-auto">
-            <h1 className="text-4xl font-black uppercase tracking-tight text-black border-b-4 border-black pb-2">Analysis</h1>
+            <div className="flex justify-between items-center border-b-4 border-black pb-2">
+                <h1 className="text-4xl font-black uppercase tracking-tight text-black">Analysis</h1>
+                <select 
+                    value={transactionSource} 
+                    onChange={(e) => setTransactionSource(e.target.value as any)}
+                    className="bg-white border-[3px] border-black font-bold uppercase text-sm p-2 cursor-pointer focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-[1px] transition-transform"
+                >
+                    <option value="all">All</option>
+                    <option value="bank">Bank</option>
+                    <option value="cash">Cash</option>
+                </select>
+            </div>
             
             {/* Timeframe Toggle */}
             <div className="flex border-4 border-black bg-white overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 {['day', 'week', 'month', 'overall'].map((tf) => (
                     <button
                         key={tf}
-                        onClick={() => setTimeframe(tf as any)}
+                        onClick={() => {
+                            setTimeframe(tf as any);
+                            setBaseDate(new Date()); // Reset date on toggle
+                        }}
                         className={`flex-1 py-3 font-bold uppercase text-xs sm:text-sm border-r-4 border-black last:border-r-0 transition-colors ${
                             timeframe === tf ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'
                         }`}
@@ -84,6 +124,61 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
                     </button>
                 ))}
             </div>
+
+            {/* Time Travel Controls */}
+            {timeframe !== 'overall' && (
+                <div className="flex justify-between items-center bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <button 
+                        onClick={() => {
+                            const newDate = new Date(baseDate);
+                            if (timeframe === 'day') newDate.setDate(newDate.getDate() - 1);
+                            if (timeframe === 'week') newDate.setDate(newDate.getDate() - 7);
+                            if (timeframe === 'month') newDate.setMonth(newDate.getMonth() - 1);
+                            setBaseDate(newDate);
+                        }}
+                        className="p-2 border-2 border-black hover:bg-gray-200 transition-colors font-black text-xl leading-none"
+                    >
+                        &lt;
+                    </button>
+                    
+                    <div className="flex flex-col items-center">
+                        <span 
+                            className="font-bold uppercase text-sm cursor-pointer hover:text-[#008CD4] transition-colors"
+                            onClick={() => setIsDatePickerVisible(!isDatePickerVisible)}
+                        >
+                            {timeframe === 'day' && baseDate.toLocaleDateString()}
+                            {timeframe === 'week' && `Week of ${baseDate.toLocaleDateString()}`}
+                            {timeframe === 'month' && baseDate.toLocaleDateString('default', { month: 'long', year: 'numeric' })}
+                        </span>
+                        {isDatePickerVisible && (
+                            <input 
+                                type="date"
+                                value={baseDate.toISOString().split('T')[0]}
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        setBaseDate(new Date(e.target.value));
+                                        setIsDatePickerVisible(false);
+                                    }
+                                }}
+                                className="mt-1 border-2 border-black p-1 text-xs font-mono focus:outline-none"
+                            />
+                        )}
+                    </div>
+
+                    <button 
+                        onClick={() => {
+                            const newDate = new Date(baseDate);
+                            if (timeframe === 'day') newDate.setDate(newDate.getDate() + 1);
+                            if (timeframe === 'week') newDate.setDate(newDate.getDate() + 7);
+                            if (timeframe === 'month') newDate.setMonth(newDate.getMonth() + 1);
+                            setBaseDate(newDate);
+                        }}
+                        className="p-2 border-2 border-black hover:bg-gray-200 transition-colors font-black text-xl leading-none"
+                    >
+                        &gt;
+                    </button>
+                </div>
+            )}
 
             {/* Metric Cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -127,8 +222,11 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
                         {filteredTxs.slice(0, limit).map((tx: any, idx: number) => (
                             <div key={idx} onClick={() => setSelectedTx(tx)} className="bg-white border-[3px] border-black p-3 flex justify-between items-center hover:-translate-y-1 transition-transform cursor-pointer">
                                 <div>
-                                    <p className="font-bold text-md leading-tight">{tx.description}</p>
-                                    <p className="font-mono text-xs text-gray-500 mt-1">{new Date(tx.date).toLocaleDateString()} &bull; {tx.category || 'Expense'}</p>
+                                    <p className="font-bold text-md leading-tight">{tx.name || tx.description}</p>
+                                    <p className="font-mono text-xs text-gray-500 mt-1">
+                                        {new Date(tx.date).toLocaleDateString()} &bull; {tx.category || 'Expense'}
+                                        <span className="ml-2 px-2 py-0.5 bg-gray-200 text-black border border-black font-bold uppercase text-[10px]">{tx.source || 'Bank'}</span>
+                                    </p>
                                 </div>
                                 <div className={`font-black text-lg ${tx.category === 'Income' ? 'text-[#008CD4]' : 'text-black'}`}>
                                     {tx.category === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}

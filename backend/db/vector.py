@@ -59,10 +59,10 @@ def init_qdrant():
     else:
         print(f"Qdrant collection {COLLECTION_NAME} already exists.")
 
-def upsert_transaction(user_id: str, tx_id: str, description: str, amount: float, category: str, date: str):
-    """Embeds the transaction description and upserts the vector into Qdrant."""
+def upsert_transaction(user_id: str, tx_id: str, name: str, description: str, amount: float, category: str, date: str):
+    """Embeds the transaction name and description and upserts the vector into Qdrant."""
     client = get_qdrant_client()
-    vector = get_embedding(description, task_type="retrieval_document")
+    vector = get_embedding(f"{name} {description}".strip(), task_type="retrieval_document")
     
     # Qdrant requires unsigned integer IDs natively. Hashes tx_id.
     qdrant_id = int(hashlib.sha256(tx_id.encode('utf-8')).hexdigest(), 16) % ((1 << 63) - 1)
@@ -75,6 +75,7 @@ def upsert_transaction(user_id: str, tx_id: str, description: str, amount: float
                 payload={
                     "user_id": user_id,
                     "tx_id": tx_id,
+                    "name": name,
                     "description": description,
                     "amount": amount,
                     "category": category,
@@ -106,3 +107,23 @@ def semantic_search(user_id: str, query: str, limit: int = 5):
     
     # Map the resulting list of matching hits' payloads for LLM context injection natively.
     return [hit.payload for hit in hits]
+
+def delete_all_transactions(user_id: str):
+    """Deletes all Qdrant vectors for a specific user_id."""
+    client = get_qdrant_client()
+    try:
+        client.delete(
+            collection_name=COLLECTION_NAME,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="user_id",
+                            match=models.MatchValue(value=user_id)
+                        )
+                    ]
+                )
+            )
+        )
+    except Exception as e:
+        print(f"Error deleting user vectors from Qdrant: {e}")

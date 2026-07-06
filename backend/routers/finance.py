@@ -9,6 +9,7 @@ from typing import Optional
 from bson import ObjectId
 import datetime
 from backend.db.mongo import db_manager
+from backend.db.vector import delete_all_transactions
 
 router = APIRouter()
 
@@ -16,15 +17,28 @@ INGEST_API_KEY = os.getenv("INGEST_API_KEY", "your-secret-key-here")
 
 
 class ApproveRequest(BaseModel):
-    description: str
+    name: str
+    description: str = ""
     amount: float
     category: str
 
 
+class BalanceUpdateRequest(BaseModel):
+    source: str
+    amount: float
+
+
 class TransactionUpdateRequest(BaseModel):
+    name: Optional[str] = None
     description: Optional[str] = None
     amount: Optional[float] = None
     category: Optional[str] = None
+    source: Optional[str] = None
+
+class ApiKeysRequest(BaseModel):
+    groq: list[str]
+    gemini: list[str]
+    openRouter: list[str]
 
 
 class IngestRequest(BaseModel):
@@ -83,7 +97,8 @@ async def ingest_gpay_transaction(
     db = db_manager.db
     pending_doc = {
         "userId": x_user_id,
-        "description": merchant,
+        "name": merchant,
+        "description": "",
         "amount": amount,
         "category": category,
         "createdAt": datetime.datetime.utcnow()
@@ -124,8 +139,10 @@ async def update_tx(req: Request, tx_id: str, payload: TransactionUpdateRequest,
         "user_id": user["user_id"],
         "transaction_id": tx_id,
         "new_amount": payload.amount,
+        "new_name": payload.name,
         "new_description": payload.description,
-        "new_category": payload.category
+        "new_category": payload.category,
+        "new_source": payload.source
     })
     
     if not result.get("success"):
@@ -175,9 +192,11 @@ async def approve_pending(req: Request, tx_id: str, payload: ApproveRequest, use
 
     result = await add_transaction.ainvoke({
         "user_id": user["user_id"],
+        "name": payload.name,
         "description": payload.description,
         "amount": payload.amount,
-        "category": payload.category
+        "category": payload.category,
+        "date": str(tx.get("createdAt")) if tx.get("createdAt") else None
     })
 
     await db.pending_transactions.delete_one({"_id": obj_id})
@@ -330,3 +349,93 @@ async def reject_batch(req: Request, batch_id: str, user: dict = Depends(get_cur
     result = await db.pending_transactions.delete_many({"userId": user["user_id"], "batchId": batch_id})
     return {"success": True, "message": f"Rejected {result.deleted_count} transactions."}
 
+@router.get("/finance/keys")
+async def get_keys(user: dict = Depends(get_current_user)):
+    db = db_manager.db
+    profile = await db.userprofiles.find_one({"userId": user["user_id"]})
+    if not profile or "apiKeys" not in profile:
+        return {"success": True, "data": {"groq": [], "gemini": [], "openRouter": []}}
+    return {"success": True, "data": profile["apiKeys"]}
+
+@router.put("/finance/keys")
+async def update_keys(payload: ApiKeysRequest, user: dict = Depends(get_current_user)):
+    db = db_manager.db
+    keys_doc = {
+        "groq": payload.groq,
+        "gemini": payload.gemini,
+        "openRouter": payload.openRouter
+    }
+    await db.userprofiles.update_one(
+        {"userId": user["user_id"]},
+        {"$set": {"apiKeys": keys_doc}},
+        upsert=True
+    )
+    return {"success": True, "message": "API keys updated successfully."}
+
+
+@router.put("/finance/balance")
+async def update_balance(payload: BalanceUpdateRequest, user: dict = Depends(get_current_user)):
+    """Manually overrides the balance for bank or cash and recalculates total balance."""
+    db = db_manager.db
+    source = payload.source.lower()
+    if source not in ["bank", "cash", "all"]:
+        raise HTTPException(status_code=400, detail="Invalid source.")
+        
+    profile = await db.userprofiles.find_one({"userId": user["user_id"]})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+        
+    bank_balance = profile.get("bankBalance", profile.get("totalBalance", 0.0))
+    cash_balance = profile.get("cashBalance", 0.0)
+    
+    if source == "bank":
+        bank_balance = payload.amount
+    elif source == "cash":
+        cash_balance = payload.amount
+    else:
+        # For 'all', we might just set bank balance to amount and cash to 0 to make total = amount.
+        # Or proportional. Let's just set bank to amount and cash to 0.
+        bank_balance = payload.amount
+        cash_balance = 0.0
+        
+    total_balance = bank_balance + cash_balance
+    
+    await db.userprofiles.update_one(
+        {"userId": user["user_id"]},
+        {"$set": {
+            "bankBalance": bank_balance,
+            "cashBalance": cash_balance,
+            "totalBalance": total_balance,
+            "updatedAt": datetime.datetime.utcnow()
+        }}
+    )
+    return {"success": True, "message": "Balance updated successfully.", "data": {"totalBalance": total_balance, "bankBalance": bank_balance, "cashBalance": cash_balance}}
+
+@router.delete("/finance/nuke")
+async def nuke_account_data(user: dict = Depends(get_current_user)):
+    """Wipes all transactions, pending queue, vector data, and resets balances to 0 for the user."""
+    db = db_manager.db
+    user_id = user["user_id"]
+    
+    # 1. Delete all standard transactions
+    await db.transactions.delete_many({"userId": user_id})
+    
+    # 2. Delete all pending transactions
+    await db.pending_transactions.delete_many({"userId": user_id})
+    
+    # 3. Wipe Qdrant vector database records
+    delete_all_transactions(user_id)
+    
+    # 4. Reset User Profile Balances to 0
+    await db.userprofiles.update_one(
+        {"userId": user_id},
+        {"$set": {
+            "bankBalance": 0.0,
+            "cashBalance": 0.0,
+            "totalBalance": 0.0,
+            "monthlyIncome": 0.0,
+            "updatedAt": datetime.datetime.utcnow()
+        }}
+    )
+    
+    return {"success": True, "message": "All financial data has been wiped successfully."}

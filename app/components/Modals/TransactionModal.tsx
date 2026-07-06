@@ -9,9 +9,11 @@ interface TransactionModalProps {
 }
 
 export default function TransactionModal({ transaction, onClose, onRefresh, getAuthHeaders }: TransactionModalProps) {
-    const [description, setDescription] = useState(transaction.description || '');
+    const [name, setName] = useState(transaction.name || transaction.description || '');
+    const [description, setDescription] = useState(transaction.name ? (transaction.description || '') : '');
     const [amount, setAmount] = useState(Math.abs(transaction.amount || 0));
     const [category, setCategory] = useState(transaction.category || 'Variable');
+    const [source, setSource] = useState(transaction.source || 'bank');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -22,7 +24,7 @@ export default function TransactionModal({ transaction, onClose, onRefresh, getA
             const res = await fetch(`/api/finance/transaction/${transaction._id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify({ description, amount: Number(amount), category })
+                body: JSON.stringify({ name, description, amount: Number(amount), category, source })
             });
             const data = await res.json();
             if (res.ok) {
@@ -80,13 +82,24 @@ export default function TransactionModal({ transaction, onClose, onRefresh, getA
                     )}
                     
                     <div>
-                        <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Description</label>
+                        <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Name</label>
                         <input
                             type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            disabled={isLoading}
+                            className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Description (Optional)</label>
+                        <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             disabled={isLoading}
-                            className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black"
+                            className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black resize-none"
+                            rows={2}
                         />
                     </div>
                     
@@ -114,6 +127,19 @@ export default function TransactionModal({ transaction, onClose, onRefresh, getA
                             <option value="Income">Income</option>
                             <option value="Variable">Variable (Expense)</option>
                             <option value="Fixed">Fixed (Expense)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Source</label>
+                        <select
+                            value={source}
+                            onChange={(e) => setSource(e.target.value)}
+                            disabled={isLoading}
+                            className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black"
+                        >
+                            <option value="bank">Bank</option>
+                            <option value="cash">Cash</option>
                         </select>
                     </div>
                     

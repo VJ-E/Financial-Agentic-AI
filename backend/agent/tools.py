@@ -50,9 +50,9 @@ async def get_financial_data(user_id: str) -> dict:
             }
         }
         
-    # Fetch the 50 most recent transactions for context
-    cursor = db.transactions.find({"userId": user_id}).sort("date", -1).limit(50)
-    recent_transactions = await cursor.to_list(length=50)
+    # Fetch recent transactions without a strict limit to allow full client-side filtering
+    cursor = db.transactions.find({"userId": user_id}).sort("date", -1)
+    recent_transactions = await cursor.to_list(length=None)
     
     # Process ObjectId to string for JSON serialization compatibility
     for tx in recent_transactions:
@@ -65,6 +65,8 @@ async def get_financial_data(user_id: str) -> dict:
                 "userId": profile.get("userId"),
                 "monthlyIncome": profile.get("monthlyIncome", 0.0),
                 "totalBalance": profile.get("totalBalance", 0.0),
+                "bankBalance": profile.get("bankBalance", profile.get("totalBalance", 0.0)), # default to total if missing
+                "cashBalance": profile.get("cashBalance", 0.0),
                 "activeSavingsGoals": profile.get("activeSavingsGoals", [])
             },
             "recentTransactions": recent_transactions
@@ -73,16 +75,20 @@ async def get_financial_data(user_id: str) -> dict:
 
 
 @tool
-async def add_transaction(user_id: str, description: str, amount: float, category: str) -> dict:
+async def add_transaction(user_id: str, name: str, amount: float, category: str, source: str = "bank", description: str = "", date: Optional[str] = None) -> dict:
     """
     Adds a new transaction for a user and natively calculates the new total balance accurately.
     Valid categories are 'Fixed', 'Variable', and 'Income'.
+    Source can be 'bank' or 'cash'.
     
     Args:
         user_id: The unique identifier of the user.
-        description: The description or title of the transaction.
+        name: The merchant or title of the transaction.
         amount: The monetary amount of the transaction. Must be a positive number.
         category: Must be 'Fixed', 'Variable', or 'Income'.
+        source: Must be 'bank' or 'cash'. Default is 'bank'.
+        description: An optional detailed description or notes.
+        date: An optional ISO timestamp for when the transaction occurred.
         
     Returns:
         A dictionary confirming the transaction addition and providing the new balance.
@@ -93,13 +99,24 @@ async def add_transaction(user_id: str, description: str, amount: float, categor
         
     is_expense = category in ["Fixed", "Variable"]
     effective_amount = -abs(amount) if is_expense else abs(amount)
+    source_val = source.lower() if source else "bank"
     
+    if date:
+        try:
+            tx_date = datetime.datetime.fromisoformat(date.replace('Z', '+00:00'))
+        except:
+            tx_date = datetime.datetime.utcnow()
+    else:
+        tx_date = datetime.datetime.utcnow()
+        
     transaction_doc = {
         "userId": user_id,
+        "name": name,
         "description": description,
         "amount": abs(amount),
         "category": category,
-        "date": datetime.datetime.utcnow(),
+        "source": source_val,
+        "date": tx_date,
         "createdAt": datetime.datetime.utcnow(),
         "updatedAt": datetime.datetime.utcnow()
     }
@@ -113,6 +130,7 @@ async def add_transaction(user_id: str, description: str, amount: float, categor
         upsert_transaction(
             user_id=user_id,
             tx_id=tx_id_str,
+            name=name,
             description=description,
             amount=abs(amount),
             category=category,
@@ -121,9 +139,14 @@ async def add_transaction(user_id: str, description: str, amount: float, categor
     except Exception as e:
         print(f"Warning: Failed to sync transaction to Qdrant vector database: {e}")
     
+    balance_inc_field = "bankBalance" if source_val == "bank" else "cashBalance"
+    
     updated_profile = await db.userprofiles.find_one_and_update(
         {"userId": user_id},
-        {"$inc": {"totalBalance": float(effective_amount)}, "$set": {"updatedAt": datetime.datetime.utcnow()}},
+        {
+            "$inc": {"totalBalance": float(effective_amount), balance_inc_field: float(effective_amount)}, 
+            "$set": {"updatedAt": datetime.datetime.utcnow()}
+        },
         return_document=ReturnDocument.AFTER
     )
     
@@ -132,6 +155,8 @@ async def add_transaction(user_id: str, description: str, amount: float, categor
             "userId": user_id,
             "monthlyIncome": abs(amount) if category == "Income" else 0.0,
             "totalBalance": float(effective_amount),
+            "bankBalance": float(effective_amount) if source_val == "bank" else 0.0,
+            "cashBalance": float(effective_amount) if source_val == "cash" else 0.0,
             "activeSavingsGoals": [],
             "createdAt": datetime.datetime.utcnow(),
             "updatedAt": datetime.datetime.utcnow()
@@ -190,10 +215,13 @@ async def delete_transaction(user_id: str, transaction_id: str) -> dict:
         
         # Substract the impact to reverse it
         new_balance = float(profile.get("totalBalance", 0)) - float(impact)
+        source = target_tx.get("source", "bank")
+        balance_field = "bankBalance" if source == "bank" else "cashBalance"
+        new_source_balance = float(profile.get(balance_field, profile.get("totalBalance", 0) if balance_field == "bankBalance" else 0)) - float(impact)
         
         await db.userprofiles.update_one(
             {"userId": user_id},
-            {"$set": {"totalBalance": new_balance}}
+            {"$set": {"totalBalance": new_balance, balance_field: new_source_balance}}
         )
         
     await db.transactions.delete_one({"_id": target_tx["_id"]})
@@ -210,18 +238,22 @@ async def update_transaction(
     user_id: str, 
     transaction_id: str, 
     new_amount: Optional[float] = None, 
+    new_name: Optional[str] = None,
     new_description: Optional[str] = None, 
-    new_category: Optional[str] = None
+    new_category: Optional[str] = None,
+    new_source: Optional[str] = None
 ) -> dict:
     """
-    Updates an existing transaction and recalculates the total balance difference.
+    Updates an existing transaction and recalculates the total balance and source balances difference.
     
     Args:
         user_id: The identifier of the user.
         transaction_id: The partial or full ID of the transaction.
         new_amount: The optional new amount.
+        new_name: The optional new name/merchant.
         new_description: The optional new description.
         new_category: The optional new category ('Fixed', 'Variable', 'Income').
+        new_source: The optional new source ('bank', 'cash').
         
     Returns:
         Dictionary with success status, the updated transaction details, and the new total balance.
@@ -243,46 +275,79 @@ async def update_transaction(
     if not target_tx:
         return {"success": False, "message": "Transaction not found."}
         
-    balance_difference = 0.0
+    profile = await db.userprofiles.find_one({"userId": user_id})
     
-    if new_amount is not None or new_category is not None:
-        old_is_expense = target_tx["category"] in ["Fixed", "Variable"]
-        old_impact = -abs(target_tx["amount"]) if old_is_expense else abs(target_tx["amount"])
-        
-        category_to_use = new_category if new_category is not None else target_tx["category"]
-        amount_to_use = new_amount if new_amount is not None else target_tx["amount"]
-        
-        new_is_expense = category_to_use in ["Fixed", "Variable"]
-        new_impact = -abs(amount_to_use) if new_is_expense else abs(amount_to_use)
-        
-        balance_difference = new_impact - old_impact
-        
     update_fields = {}
     if new_amount is not None:
         update_fields["amount"] = abs(new_amount)
+    if new_name is not None:
+        update_fields["name"] = new_name
     if new_description is not None:
         update_fields["description"] = new_description
     if new_category is not None:
         update_fields["category"] = new_category
+    if new_source is not None:
+        update_fields["source"] = new_source.lower()
         
-    if update_fields:
+    if update_fields and profile:
+        old_is_expense = target_tx["category"] in ["Fixed", "Variable"]
+        old_impact = -abs(target_tx["amount"]) if old_is_expense else abs(target_tx["amount"])
+        old_source = target_tx.get("source", "bank")
+        
+        category_to_use = update_fields.get("category", target_tx["category"])
+        amount_to_use = update_fields.get("amount", target_tx["amount"])
+        source_to_use = update_fields.get("source", old_source)
+        
+        new_is_expense = category_to_use in ["Fixed", "Variable"]
+        new_impact = -abs(amount_to_use) if new_is_expense else abs(amount_to_use)
+        
+        # Calculate balance adjustments
+        total_balance = float(profile.get("totalBalance", 0))
+        bank_balance = float(profile.get("bankBalance", total_balance))
+        cash_balance = float(profile.get("cashBalance", 0))
+        
+        # Revert old impact
+        total_balance -= old_impact
+        if old_source == "bank": bank_balance -= old_impact
+        else: cash_balance -= old_impact
+        
+        # Apply new impact
+        total_balance += new_impact
+        if source_to_use == "bank": bank_balance += new_impact
+        else: cash_balance += new_impact
+        
         update_fields["updatedAt"] = datetime.datetime.utcnow()
         await db.transactions.update_one(
             {"_id": target_tx["_id"]},
             {"$set": update_fields}
         )
         
-    profile = await db.userprofiles.find_one({"userId": user_id})
-    new_balance = 0.0
-    
-    if profile:
-        new_balance = float(profile.get("totalBalance", 0)) + float(balance_difference)
-        if balance_difference != 0:
-            await db.userprofiles.update_one(
-                {"userId": user_id},
-                {"$set": {"totalBalance": new_balance}}
+        try:
+            upsert_transaction(
+                user_id=user_id,
+                tx_id=str(target_tx["_id"]),
+                name=update_fields.get("name", target_tx.get("name", target_tx.get("description", ""))),
+                description=update_fields.get("description", target_tx.get("description", "")),
+                amount=abs(amount_to_use),
+                category=category_to_use,
+                date=str(target_tx["date"])
             )
-    
+        except Exception as e:
+            print(f"Warning: Failed to sync updated transaction to Qdrant vector database: {e}")
+        
+        await db.userprofiles.update_one(
+            {"userId": user_id},
+            {"$set": {
+                "totalBalance": total_balance,
+                "bankBalance": bank_balance,
+                "cashBalance": cash_balance
+            }}
+        )
+        
+        new_total_balance = total_balance
+    else:
+        new_total_balance = float(profile.get("totalBalance", 0)) if profile else 0.0
+
     # Return updated tx locally combined
     updated_tx = {**target_tx, **update_fields}
     updated_tx["_id"] = str(updated_tx["_id"])
@@ -292,7 +357,7 @@ async def update_transaction(
         "message": "Transaction updated.",
         "data": {
             "transaction": updated_tx,
-            "newBalance": new_balance
+            "newBalance": new_total_balance
         }
     }
 
