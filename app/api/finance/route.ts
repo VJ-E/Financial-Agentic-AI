@@ -32,7 +32,13 @@ export async function GET(req: Request) {
         // Next.js frontend natively expects { profile, recentTransactions }
         const unwrappedData = payload.data ? payload.data : payload;
 
-        return NextResponse.json(unwrappedData);
+        return NextResponse.json(unwrappedData, {
+            headers: {
+                "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        });
     } catch (error) {
         console.error("Finance API Proxy Error:", error);
         return NextResponse.json(

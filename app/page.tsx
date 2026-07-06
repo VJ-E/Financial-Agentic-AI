@@ -127,7 +127,14 @@ export default function Home() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-            const res = await fetch("/api/finance", { signal: controller.signal, headers: { ...getAuthHeaders() } });
+            const res = await fetch(`/api/finance?t=${new Date().getTime()}`, { 
+                signal: controller.signal, 
+                headers: { 
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                    ...getAuthHeaders() 
+                } 
+            });
             clearTimeout(timeoutId);
             
             if (res.status === 401) {
