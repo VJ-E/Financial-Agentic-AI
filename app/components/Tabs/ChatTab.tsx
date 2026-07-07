@@ -14,11 +14,12 @@ interface ChatTabProps {
     isUploading: boolean;
     selectedImageFile: File | null;
     setSelectedImageFile: (file: File | null) => void;
+    handleUndo: (chatId: string) => void;
 }
 
-export default function ChatTab({ messages, input, setInput, handleSubmit, isLoading, messagesEndRef, fileInputRef, handleImageUpload, isUploading, selectedImageFile, setSelectedImageFile }: ChatTabProps) {
+export default function ChatTab({ messages, input, setInput, handleSubmit, isLoading, messagesEndRef, fileInputRef, handleImageUpload, isUploading, selectedImageFile, setSelectedImageFile, handleUndo }: ChatTabProps) {
     return (
-        <div className="flex flex-col h-[calc(100vh-80px)] max-w-4xl mx-auto bg-white border-x-4 border-black">
+        <div className="flex flex-col h-[calc(100vh-80px)] w-full bg-white">
             {/* Header */}
             <div className="p-4 border-b-4 border-black bg-[#008CD4] flex justify-between items-center">
                 <h2 className="text-xl font-black uppercase tracking-tight text-black">Agent Chat</h2>
@@ -41,10 +42,7 @@ export default function ChatTab({ messages, input, setInput, handleSubmit, isLoa
                     <div className="space-y-6">
                         {messages.map((m, idx) => (
                             <div key={idx} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                <div className="flex items-start gap-2 max-w-[90%] md:max-w-[80%]">
-                                    {m.role === 'assistant' && (
-                                        <span className="font-bold whitespace-nowrap pt-1 text-black">{'['}SYS{']'}:</span>
-                                    )}
+                                <div className="flex items-start gap-2 w-full">
                                     <div className={`p-4 border-[3px] border-black font-sans w-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
                                         m.role === 'user' ? 'bg-[#008CD4] text-white font-bold' : 'bg-white text-black font-medium'
                                     }`}>
@@ -68,17 +66,24 @@ export default function ChatTab({ messages, input, setInput, handleSubmit, isLoa
                                         ) : (
                                             m.content
                                         )}
+                                        
+                                        {m.role === 'assistant' && m.chatId && (
+                                            <div className="flex justify-end mt-2 border-t-2 border-black pt-2">
+                                                <button 
+                                                    onClick={() => handleUndo(m.chatId)}
+                                                    className="bg-red-500 hover:bg-black text-white text-xs font-bold uppercase px-3 py-1 border-2 border-black transition-colors"
+                                                >
+                                                    Undo
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
-                                    {m.role === 'user' && (
-                                        <span className="font-bold whitespace-nowrap pt-1 text-black">:{'['}USR{']'}</span>
-                                    )}
                                 </div>
                             </div>
                         ))}
                         {isLoading && (
                             <div className="flex flex-col items-start">
-                                <div className="flex items-start gap-2">
-                                    <span className="font-bold whitespace-nowrap pt-1 text-black">{'['}SYS{']'}:</span>
+                                <div className="flex items-start gap-2 w-full">
                                     <div className="bg-white text-black p-4 border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-mono font-bold animate-pulse">
                                         PROCESSING_QUERY...
                                     </div>

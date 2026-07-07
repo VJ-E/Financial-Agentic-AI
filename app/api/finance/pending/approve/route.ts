@@ -7,7 +7,7 @@ export async function POST(req: Request) {
         const body = await req.json();
         const authHeader = req.headers.get("authorization") || "";
         const geminiHeader = req.headers.get("x-gemini-api-keys") || "";
-        const { tx_id, description, amount, category } = body;
+        const { tx_id, name, description, amount, category } = body;
 
         const response = await fetch(`${BACKEND_URL}/finance/pending/${tx_id}/approve`, {
             method: 'POST',
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
                 'Authorization': authHeader,
                 'X-Gemini-Api-Keys': geminiHeader,
             },
-            body: JSON.stringify({ description, amount, category })
+            body: JSON.stringify({ name, description, amount, category })
         });
         
         const data = await response.json();

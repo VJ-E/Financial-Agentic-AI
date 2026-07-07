@@ -61,7 +61,7 @@ export default function NotificationsTab({
                                 </div>
                                 <div className="flex gap-2">
                                     <button 
-                                        onClick={() => handleApprove(tx._id)}
+                                        onClick={() => handleApprove(tx)}
                                         className="flex-1 bg-black text-white font-bold uppercase py-2 border-2 border-black hover:bg-[#4ecdc4] hover:text-black transition-colors flex justify-center items-center gap-1"
                                     >
                                         <Check className="w-4 h-4" /> Approve

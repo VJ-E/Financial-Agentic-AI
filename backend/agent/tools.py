@@ -8,8 +8,10 @@ import asyncio
 from bson import ObjectId
 from pymongo import ReturnDocument
 from langchain_core.tools import tool
+from langchain_core.runnables.config import RunnableConfig
 from backend.db.mongo import db_manager
 from backend.db.vector import upsert_transaction, semantic_search
+from backend.db.revert import log_revert_action
 
 
 def generate_short_id() -> str:
@@ -75,7 +77,7 @@ async def get_financial_data(user_id: str) -> dict:
 
 
 @tool
-async def add_transaction(user_id: str, name: str, amount: float, category: str, source: str = "bank", description: str = "", date: Optional[str] = None) -> dict:
+async def add_transaction(user_id: str, name: str, amount: float, category: str, source: str = "bank", description: str = "", date: Optional[str] = None, *, config: RunnableConfig = None) -> dict:
     """
     Adds a new transaction for a user and natively calculates the new total balance accurately.
     Valid categories are 'Fixed', 'Variable', and 'Income'.
@@ -94,6 +96,7 @@ async def add_transaction(user_id: str, name: str, amount: float, category: str,
         A dictionary confirming the transaction addition and providing the new balance.
     """
     db = db_manager.db
+    chat_id = config.get("configurable", {}).get("chat_id") if config else None
     if db is None:
         return {"success": False, "message": "Database not connected"}
         
@@ -124,6 +127,7 @@ async def add_transaction(user_id: str, name: str, amount: float, category: str,
     insert_result = await db.transactions.insert_one(transaction_doc)
     tx_id_str = str(insert_result.inserted_id)
     transaction_doc["_id"] = tx_id_str
+    await log_revert_action(user_id, chat_id, "add_tx", {"tx_id": tx_id_str})
     
     # Sync safely with Qdrant vector db
     try:
@@ -177,7 +181,7 @@ async def add_transaction(user_id: str, name: str, amount: float, category: str,
 
 
 @tool
-async def delete_transaction(user_id: str, transaction_id: str) -> dict:
+async def delete_transaction(user_id: str, transaction_id: str, *, config: RunnableConfig = None) -> dict:
     """
     Deletes a transaction and reverses its impact on the user's total balance.
     
@@ -189,6 +193,7 @@ async def delete_transaction(user_id: str, transaction_id: str) -> dict:
         A dictionary indicating success and the user's updated balance.
     """
     db = db_manager.db
+    chat_id = config.get("configurable", {}).get("chat_id") if config else None
     if db is None:
         return {"success": False, "message": "Database not connected"}
         
@@ -204,7 +209,11 @@ async def delete_transaction(user_id: str, transaction_id: str) -> dict:
             break
             
     if not target_tx:
-        return {"success": False, "message": "Transaction not found or you don't have permission to delete it."}
+        return {"success": False, "message": "Transaction not found or you don\'t have permission to delete it."}
+
+    log_doc = dict(target_tx)
+    log_doc["_id"] = str(log_doc["_id"])
+    await log_revert_action(user_id, chat_id, "delete_tx", {"tx_doc": log_doc})
         
     profile = await db.userprofiles.find_one({"userId": user_id})
     new_balance = 0.0
@@ -241,7 +250,8 @@ async def update_transaction(
     new_name: Optional[str] = None,
     new_description: Optional[str] = None, 
     new_category: Optional[str] = None,
-    new_source: Optional[str] = None
+    new_source: Optional[str] = None,
+    *, config: RunnableConfig = None
 ) -> dict:
     """
     Updates an existing transaction and recalculates the total balance and source balances difference.
@@ -259,6 +269,7 @@ async def update_transaction(
         Dictionary with success status, the updated transaction details, and the new total balance.
     """
     db = db_manager.db
+    chat_id = config.get("configurable", {}).get("chat_id") if config else None
     if db is None:
         return {"success": False, "message": "Database not connected"}
         
@@ -274,6 +285,10 @@ async def update_transaction(
             
     if not target_tx:
         return {"success": False, "message": "Transaction not found."}
+
+    log_doc = dict(target_tx)
+    log_doc["_id"] = str(log_doc["_id"])
+    await log_revert_action(user_id, chat_id, "update_tx", {"tx_id": str(target_tx["_id"]), "old_doc": log_doc})
         
     profile = await db.userprofiles.find_one({"userId": user_id})
     
@@ -363,7 +378,7 @@ async def update_transaction(
 
 
 @tool
-async def create_goal(user_id: str, title: str, target_amount: float) -> dict:
+async def create_goal(user_id: str, title: str, target_amount: float, *, config: RunnableConfig = None) -> dict:
     """
     Creates a new active savings goal for the user.
     
@@ -376,6 +391,7 @@ async def create_goal(user_id: str, title: str, target_amount: float) -> dict:
         Dictionary detailing the newly generated goal's shortId and the current total balance.
     """
     db = db_manager.db
+    chat_id = config.get("configurable", {}).get("chat_id") if config else None
     if db is None:
         return {"success": False, "message": "Database not connected"}
         
@@ -395,6 +411,7 @@ async def create_goal(user_id: str, title: str, target_amount: float) -> dict:
         {"userId": user_id},
         {"$push": {"activeSavingsGoals": new_goal}}
     )
+    await log_revert_action(user_id, chat_id, "add_goal", {"goal_id": short_id})
     
     return {
         "success": True,
@@ -407,7 +424,7 @@ async def create_goal(user_id: str, title: str, target_amount: float) -> dict:
 
 
 @tool
-async def fund_goal(user_id: str, short_id: str, amount: float) -> dict:
+async def fund_goal(user_id: str, short_id: str, amount: float, *, config: RunnableConfig = None) -> dict:
     """
     Funds a specific active savings goal by securely verifying funds via atomic decrements.
     
@@ -420,6 +437,7 @@ async def fund_goal(user_id: str, short_id: str, amount: float) -> dict:
         Dictionary on transaction success/failure and the newly resulting balance amounts.
     """
     db = db_manager.db
+    chat_id = config.get("configurable", {}).get("chat_id") if config else None
     if db is None:
         return {"success": False, "message": "Database not connected"}
         
@@ -439,6 +457,8 @@ async def fund_goal(user_id: str, short_id: str, amount: float) -> dict:
         },
         return_document=ReturnDocument.AFTER
     )
+    if profile:
+        await log_revert_action(user_id, chat_id, "fund_goal", {"goal_id": short_id, "amount": funding_amount})
     
     if not profile:
         check_profile = await db.userprofiles.find_one({"userId": user_id})
@@ -546,7 +566,7 @@ async def web_search(query: str) -> dict:
         }
 
 @tool
-async def delete_goal(user_id: str, goal_id: str) -> dict:
+async def delete_goal(user_id: str, goal_id: str, *, config: RunnableConfig = None) -> dict:
     """
     Deletes an active savings goal. Any funds saved in this goal are returned to the user's main balance.
     
@@ -558,6 +578,7 @@ async def delete_goal(user_id: str, goal_id: str) -> dict:
         A dictionary indicating success and the user's updated balance.
     """
     db = db_manager.db
+    chat_id = config.get("configurable", {}).get("chat_id") if config else None
     if db is None:
         return {"success": False, "message": "Database not connected"}
         
@@ -577,6 +598,7 @@ async def delete_goal(user_id: str, goal_id: str) -> dict:
         
     refund_amount = float(target_goal.get("currentAmount", 0.0))
     new_balance = float(profile.get("totalBalance", 0.0)) + refund_amount
+    await log_revert_action(user_id, chat_id, "delete_goal", {"goal_doc": target_goal})
     
     await db.userprofiles.update_one(
         {"userId": user_id},

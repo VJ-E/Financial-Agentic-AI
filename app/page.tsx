@@ -11,6 +11,7 @@ import SettingsTab from './components/Tabs/SettingsTab';
 type Message = {
     role: "user" | "assistant";
     content: string;
+    chatId?: string;
 };
 
 // --- DEFAULT FALLBACK DATA (While Loading) ---
@@ -48,7 +49,7 @@ export default function Home() {
     const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
     const [settingsTab, setSettingsTab] = useState<'api_keys' | 'account'>('api_keys');
     const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
-    const [transactionSource, setTransactionSource] = useState<'all' | 'bank' | 'cash'>('all');
+    const [transactionSource, setTransactionSource] = useState<'all' | 'bank' | 'cash'>('bank');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleChangePassword = async (e: React.FormEvent) => {
@@ -271,6 +272,19 @@ export default function Home() {
             }
         })
         .catch(err => console.error("Failed to load keys", err));
+        
+        fetch("/api/finance/chat/history", {
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.messages) {
+                setMessages(data.messages);
+            }
+        })
+        .catch(err => console.error("Failed to load chat history", err));
     }, []);
 
     const handleQueueChange = (idx: number, field: string, val: any) => {
@@ -286,7 +300,7 @@ export default function Home() {
             await fetch("/api/finance/pending/approve", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                body: JSON.stringify({ tx_id: tx._id, description: tx.description, amount: Number(tx.amount), category: tx.category })
+                body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), category: tx.category })
             });
             fetchPendingQueue();
             fetchDashboardData();
@@ -315,7 +329,7 @@ export default function Home() {
                 fetch("/api/finance/pending/approve", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                    body: JSON.stringify({ tx_id: tx._id, description: tx.description, amount: Number(tx.amount), category: tx.category })
+                    body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), category: tx.category })
                 })
             ));
             fetchPendingQueue();
@@ -434,8 +448,9 @@ export default function Home() {
             finalInput += `\n\n[Extracted Image Data]:\n${JSON.stringify(extractedTransactions, null, 2)}`;
         }
 
-        const userMsg: Message = { role: "user", content: finalInput };
-        const newMessages: Message[] = [...messages, { role: "user", content: input.trim() }]; // Show original input to user visually
+        const newChatId = crypto.randomUUID();
+        const userMsg: Message = { role: "user", content: finalInput, chatId: newChatId };
+        const newMessages: Message[] = [...messages, { role: "user", content: input.trim(), chatId: newChatId }]; // Show original input to user visually
         setMessages(newMessages);
         setInput("");
         setIsLoading(true);
@@ -445,13 +460,13 @@ export default function Home() {
             const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                body: JSON.stringify({ messages: [...messages, userMsg], api_keys: apiKeys, openrouter_api_keys: openRouterApiKeys }),
+                body: JSON.stringify({ messages: [...messages, userMsg], chat_id: newChatId, api_keys: apiKeys, openrouter_api_keys: openRouterApiKeys }),
             });
 
             if (!response.ok) throw new Error("Agent failed to respond.");
 
             // Append empty assistant message for streaming
-            setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: "", chatId: newChatId }]);
 
             if (response.body) {
                 const reader = response.body.getReader();
@@ -480,6 +495,31 @@ export default function Home() {
             setMessages((prev) => [...prev, { role: "assistant", content: "CRITICAL ERROR: Unable to communicate with agent." }]);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleUndo = async (chatId: string) => {
+        try {
+            const res = await fetch("/api/finance/chat/undo", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                body: JSON.stringify({ chat_id: chatId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const histRes = await fetch("/api/finance/chat/history", {
+                    headers: { ...getAuthHeaders() }
+                });
+                const histData = await histRes.json();
+                if (histData.success && histData.messages) {
+                    setMessages(histData.messages);
+                }
+                fetchDashboardData();
+            } else {
+                alert(data.message || "Undo failed");
+            }
+        } catch (e) {
+            console.error(e);
         }
     };
 
@@ -522,6 +562,7 @@ export default function Home() {
                 )}
                 {activeTab === 'chat' && (
                     <ChatTab 
+                        handleUndo={handleUndo}
                         messages={messages}
                         input={input}
                         setInput={setInput}
