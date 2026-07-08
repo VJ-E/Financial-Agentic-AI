@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, LogOut, Image as ImageIcon, X } from 'lucide-react';
+import { Send, LogOut, Image as ImageIcon, X, Undo2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface ChatTabProps {
@@ -68,12 +68,13 @@ export default function ChatTab({ messages, input, setInput, handleSubmit, isLoa
                                         )}
                                         
                                         {m.role === 'assistant' && m.chatId && (
-                                            <div className="flex justify-end mt-2 border-t-2 border-black pt-2">
+                                            <div className="flex justify-end mt-2 pt-2 text-gray-500">
                                                 <button 
                                                     onClick={() => handleUndo(m.chatId)}
-                                                    className="bg-red-500 hover:bg-black text-white text-xs font-bold uppercase px-3 py-1 border-2 border-black transition-colors"
+                                                    title="Undo this action"
+                                                    className="hover:text-black transition-colors"
                                                 >
-                                                    Undo
+                                                    <Undo2 className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         )}

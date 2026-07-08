@@ -65,7 +65,7 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
 
             if (include) {
                 filtered.push(tx);
-                if (tx.category === 'Income') income += Math.abs(tx.amount);
+                if (tx.type === 'credit') income += Math.abs(tx.amount);
                 else expense += Math.abs(tx.amount);
             }
         });
@@ -220,16 +220,16 @@ export default function AnalysisTab({ financeData, getAuthHeaders, fetchDashboar
                 {filteredTxs.length > 0 ? (
                     <div className="space-y-3">
                         {filteredTxs.slice(0, limit).map((tx: any, idx: number) => (
-                            <div key={idx} onClick={() => setSelectedTx(tx)} className="bg-white border-[3px] border-black p-3 flex justify-between items-center hover:-translate-y-1 transition-transform cursor-pointer">
+                            <div key={idx} onClick={() => setSelectedTx(tx)} className="bg-white border-[3px] border-black p-4 flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform cursor-pointer">
                                 <div>
-                                    <p className="font-bold text-md leading-tight">{tx.name || tx.description}</p>
+                                    <p className="font-bold text-lg leading-tight uppercase">{tx.category || 'Unknown'}</p>
                                     <p className="font-mono text-xs text-gray-500 mt-1">
-                                        {new Date(tx.date).toLocaleDateString()} &bull; {tx.category || 'Expense'}
+                                        {tx.name || tx.description} &bull; {new Date(tx.date).toLocaleDateString()} 
                                         <span className="ml-2 px-2 py-0.5 bg-gray-200 text-black border border-black font-bold uppercase text-[10px]">{tx.source || 'Bank'}</span>
                                     </p>
                                 </div>
-                                <div className={`font-black text-lg ${tx.category === 'Income' ? 'text-[#008CD4]' : 'text-black'}`}>
-                                    {tx.category === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+                                <div className={`font-black text-xl ${tx.type === 'credit' ? 'text-[#008CD4]' : 'text-black'}`}>
+                                    {tx.type === 'credit' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
                                 </div>
                             </div>
                         ))}

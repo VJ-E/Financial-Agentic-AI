@@ -1,19 +1,25 @@
 import React, { useState } from 'react';
-import { X, Trash2, Save } from 'lucide-react';
+import { X, Trash2, Save, ChevronDown } from 'lucide-react';
+import CategorySelectModal from './CategorySelectModal';
 
 interface TransactionModalProps {
     transaction: any;
     onClose: () => void;
     onRefresh: () => void;
     getAuthHeaders: () => any;
+    rawProfile?: any;
 }
 
-export default function TransactionModal({ transaction, onClose, onRefresh, getAuthHeaders }: TransactionModalProps) {
+export default function TransactionModal({ transaction, onClose, onRefresh, getAuthHeaders, rawProfile }: TransactionModalProps) {
     const [name, setName] = useState(transaction.name || transaction.description || '');
     const [description, setDescription] = useState(transaction.name ? (transaction.description || '') : '');
     const [amount, setAmount] = useState(Math.abs(transaction.amount || 0));
-    const [category, setCategory] = useState(transaction.category || 'Variable');
+    const [type, setType] = useState(transaction.type || (transaction.category === 'Income' ? 'credit' : 'debit'));
+    const [category, setCategory] = useState(transaction.category || 'Unknown');
     const [source, setSource] = useState(transaction.source || 'bank');
+    
+    const customCategories = rawProfile?.customCategories || [];
+    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -24,7 +30,7 @@ export default function TransactionModal({ transaction, onClose, onRefresh, getA
             const res = await fetch(`/api/finance/transaction/${transaction._id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify({ name, description, amount: Number(amount), category, source })
+                body: JSON.stringify({ name, description, amount: Number(amount), type, category: category || "Unknown", source })
             });
             const data = await res.json();
             if (res.ok) {
@@ -81,6 +87,17 @@ export default function TransactionModal({ transaction, onClose, onRefresh, getA
                         </div>
                     )}
                     
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Category</label>
+                        <button
+                            onClick={() => setIsCategoryModalOpen(true)}
+                            className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold text-left flex justify-between items-center transition-colors mt-1 text-black uppercase"
+                        >
+                            <span>{category}</span>
+                            <ChevronDown size={16} />
+                        </button>
+                    </div>
+
                     <div>
                         <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Name</label>
                         <input
@@ -116,41 +133,34 @@ export default function TransactionModal({ transaction, onClose, onRefresh, getA
                         />
                     </div>
                     
-                    <div>
-                        <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Category</label>
-                        <select
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
-                            disabled={isLoading}
-                            className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black"
-                        >
-                            <option value="Income">Income</option>
-                            <option value="Variable">Variable (Expense)</option>
-                            <option value="Fixed">Fixed (Expense)</option>
-                        </select>
-                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Type</label>
+                            <select 
+                                value={type}
+                                onChange={(e) => setType(e.target.value)}
+                                className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black"
+                            >
+                                <option value="debit">Debit (-)</option>
+                                <option value="credit">Credit (+)</option>
+                            </select>
+                        </div>
 
-                    <div>
-                        <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Source</label>
-                        <select
-                            value={source}
-                            onChange={(e) => setSource(e.target.value)}
-                            disabled={isLoading}
-                            className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black"
-                        >
-                            <option value="bank">Bank</option>
-                            <option value="cash">Cash</option>
-                        </select>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold font-mono uppercase tracking-widest text-black">Source</label>
+                            <select
+                                value={source}
+                                onChange={(e) => setSource(e.target.value)}
+                                disabled={isLoading}
+                                className="w-full bg-[#f4f4f4] border-[3px] border-black p-3 font-bold focus:outline-none focus:bg-white transition-colors mt-1 text-black"
+                            >
+                                <option value="bank">Bank</option>
+                                <option value="cash">Cash</option>
+                            </select>
+                        </div>
                     </div>
                     
                     <div className="flex gap-4 pt-4 border-t-2 border-black border-dashed mt-4">
-                        <button
-                            onClick={handleSave}
-                            disabled={isLoading}
-                            className="flex-1 bg-black text-white font-black uppercase py-3 border-[3px] border-black flex justify-center items-center gap-2 hover:bg-[#008CD4] transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
-                        >
-                            <Save className="w-5 h-5" /> Save
-                        </button>
                         <button
                             onClick={handleDelete}
                             disabled={isLoading}
@@ -158,9 +168,25 @@ export default function TransactionModal({ transaction, onClose, onRefresh, getA
                         >
                             <Trash2 className="w-5 h-5" /> Delete
                         </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={isLoading}
+                            className="flex-1 bg-black text-white font-black uppercase py-3 border-[3px] border-black flex justify-center items-center gap-2 hover:bg-[#008CD4] transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+                        >
+                            <Save className="w-5 h-5" /> Save
+                        </button>
                     </div>
                 </div>
             </div>
+            
+            {isCategoryModalOpen && (
+                <CategorySelectModal
+                    categories={customCategories}
+                    selectedCategory={category}
+                    onSelect={setCategory}
+                    onClose={() => setIsCategoryModalOpen(false)}
+                />
+            )}
         </div>
     );
 }

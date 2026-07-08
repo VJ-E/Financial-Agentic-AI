@@ -4,19 +4,21 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class CategoryEnum(str, Enum):
-    FIXED = "Fixed"
-    VARIABLE = "Variable"
-    INCOME = "Income"
+class TypeEnum(str, Enum):
+    DEBIT = "debit"
+    CREDIT = "credit"
 
 
 class Transaction(BaseModel):
     id: Optional[str] = Field(alias="_id", default=None)
     userId: str
+    name: str
     date: datetime = Field(default_factory=datetime.utcnow)
-    description: str
+    description: str = ""
     amount: float
-    category: CategoryEnum
+    type: TypeEnum
+    category: str = "Unknown"
+    source: str = "bank"
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
 
@@ -25,10 +27,13 @@ class Transaction(BaseModel):
         json_schema_extra={
             "example": {
                 "userId": "user123",
+                "name": "Grocery",
                 "date": "2026-04-24T23:00:00Z",
-                "description": "Grocery shopping",
+                "description": "Weekly shopping",
                 "amount": 150.50,
-                "category": "Variable"
+                "type": "debit",
+                "category": "Food",
+                "source": "bank"
             }
         }
     )

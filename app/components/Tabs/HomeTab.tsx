@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { IndianRupee, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import { IndianRupee, ArrowUpRight, ArrowDownRight, Activity, Plus } from 'lucide-react';
 import TransactionModal from '../Modals/TransactionModal';
+import AddTransactionModal from '../Modals/AddTransactionModal';
 
 interface HomeTabProps {
     financeData: any;
@@ -13,6 +14,7 @@ interface HomeTabProps {
 
 export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardData, transactionSource, setTransactionSource, rawProfile }: HomeTabProps) {
     const [selectedTx, setSelectedTx] = useState<any>(null);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditingBalance, setIsEditingBalance] = useState(false);
     const [editBalanceAmount, setEditBalanceAmount] = useState('');
     const [isSavingBalance, setIsSavingBalance] = useState(false);
@@ -33,7 +35,7 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
         filteredTransactions.forEach((tx: any) => {
             const txDate = new Date(tx.date);
             if (txDate >= thirtyDaysAgo) {
-                if (tx.category === 'Income') credited += Math.abs(tx.amount);
+                if (tx.type === 'credit' || tx.category === 'Income') credited += Math.abs(tx.amount);
                 else debited += Math.abs(tx.amount);
             }
         });
@@ -43,7 +45,7 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
     const displayBalance = useMemo(() => {
         if (transactionSource === 'bank') return rawProfile?.bankBalance || 0;
         if (transactionSource === 'cash') return rawProfile?.cashBalance || 0;
-        return rawProfile?.balance || 0;
+        return rawProfile?.totalBalance || 0;
     }, [transactionSource, rawProfile]);
 
     const formatCurrency = (amount: number) => 
@@ -144,22 +146,30 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
 
             {/* Recent Transactions */}
             <div>
-                <h3 className="text-2xl font-black uppercase mb-4 flex items-center gap-2">
-                    <Activity className="w-6 h-6" /> Recent Transactions
-                </h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-black uppercase flex items-center gap-2">
+                        <Activity className="w-6 h-6" /> Recent Transactions
+                    </h3>
+                    <button 
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="bg-black text-white font-bold uppercase text-sm px-4 py-2 flex items-center gap-2 hover:bg-gray-800 transition-colors border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                        <Plus size={16} strokeWidth={3} /> Add
+                    </button>
+                </div>
                 {filteredTransactions.length > 0 ? (
                     <div className="space-y-3">
                         {filteredTransactions.slice(0, 10).map((tx: any, idx: number) => (
                             <div key={idx} onClick={() => setSelectedTx(tx)} className="bg-white border-[3px] border-black p-4 flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform cursor-pointer">
                                 <div>
-                                    <p className="font-bold text-lg leading-tight">{tx.name || tx.description}</p>
+                                    <p className="font-bold text-lg leading-tight uppercase">{tx.category || 'Unknown'}</p>
                                     <p className="font-mono text-xs text-gray-500 mt-1">
-                                        {new Date(tx.date).toLocaleDateString()} &bull; {tx.category || 'Expense'} 
+                                        {tx.name || tx.description} &bull; {new Date(tx.date).toLocaleDateString()} 
                                         <span className="ml-2 px-2 py-0.5 bg-gray-200 text-black border border-black font-bold uppercase text-[10px]">{tx.source || 'Bank'}</span>
                                     </p>
                                 </div>
-                                <div className={`font-black text-xl ${tx.category === 'Income' ? 'text-[#008CD4]' : 'text-black'}`}>
-                                    {tx.category === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+                                <div className={`font-black text-xl ${tx.type === 'credit' || tx.category === 'Income' ? 'text-[#008CD4]' : 'text-black'}`}>
+                                    {tx.type === 'credit' || tx.category === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
                                 </div>
                             </div>
                         ))}
@@ -177,6 +187,16 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
                     onClose={() => setSelectedTx(null)}
                     onRefresh={fetchDashboardData}
                     getAuthHeaders={getAuthHeaders}
+                    rawProfile={rawProfile}
+                />
+            )}
+
+            {isAddModalOpen && (
+                <AddTransactionModal 
+                    onClose={() => setIsAddModalOpen(false)}
+                    onRefresh={fetchDashboardData}
+                    getAuthHeaders={getAuthHeaders}
+                    rawProfile={rawProfile}
                 />
             )}
         </div>

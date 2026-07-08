@@ -122,6 +122,7 @@ export default function Home() {
     const [vaultsData, setVaultsData] = useState([]);
     const [pendingTransactions, setPendingTransactions] = useState<any[]>([]);
     const [isQueueOpen, setIsQueueOpen] = useState(false);
+    const [rawProfile, setRawProfile] = useState<any>(null);
 
     const fetchDashboardData = async () => {
         try {
@@ -148,13 +149,14 @@ export default function Home() {
             const data = await res.json();
 
             if (data.profile) {
+                setRawProfile(data.profile);
                 let calculatedIncome = 0;
                 let calculatedExpenses = 0;
 
                 if (data.recentTransactions) {
                     data.recentTransactions.forEach((t: any) => {
-                        if (t.category === 'Income') calculatedIncome += t.amount;
-                        else if (t.category === 'Fixed' || t.category === 'Variable') calculatedExpenses += Math.abs(t.amount);
+                        if (t.type === 'credit') calculatedIncome += t.amount;
+                        else if (t.type === 'debit') calculatedExpenses += Math.abs(t.amount);
                     });
                 }
 
@@ -183,8 +185,8 @@ export default function Home() {
                 }));
                 setTopSpendingData(recentAsSpending);
 
-                const formattedBarData = data.recentTransactions.filter((t: any) => t.category !== 'Income').map((t: any) => ({
-                    category: t.description.substring(0, 8),
+                const formattedBarData = data.recentTransactions.filter((t: any) => t.type === 'debit').map((t: any) => ({
+                    category: t.description ? t.description.substring(0, 8) : (t.category || "Unknown").substring(0, 8),
                     val: t.amount
                 }));
                 setExpensesBarData(formattedBarData);
@@ -194,7 +196,7 @@ export default function Home() {
                 reversedTransactions.forEach((t: any) => {
                     const date = new Date(t.date);
                     const month = date.toLocaleString('default', { month: 'short' });
-                    const flow = t.category === 'Income' ? t.amount : -Math.abs(t.amount);
+                    const flow = t.type === 'credit' ? t.amount : -Math.abs(t.amount);
                     cashFlowByMonth[month] = (cashFlowByMonth[month] || 0) + flow;
                 });
                 const cashFlowMvPData = Object.keys(cashFlowByMonth).map(month => ({
@@ -257,6 +259,9 @@ export default function Home() {
         fetchDashboardData();
         fetchPendingQueue();
         
+        const handleRefresh = () => fetchDashboardData();
+        window.addEventListener('refreshDashboard', handleRefresh);
+        
         // Fetch keys from backend
         fetch("/api/user/keys", {
             headers: {
@@ -285,7 +290,11 @@ export default function Home() {
             }
         })
         .catch(err => console.error("Failed to load chat history", err));
-    }, []);
+
+        return () => {
+            window.removeEventListener('refreshDashboard', handleRefresh);
+        };
+    }, [router]);
 
     const handleQueueChange = (idx: number, field: string, val: any) => {
         const newQueue = [...pendingTransactions];
@@ -297,10 +306,10 @@ export default function Home() {
         // Optimistic UI update
         setPendingTransactions(prev => prev.filter(p => p._id !== tx._id));
         try {
-            await fetch("/api/finance/pending/approve", {
+            await fetch(`/api/finance/pending/${tx._id}/approve`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), category: tx.category })
+                body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), type: tx.type || 'debit', category: tx.category })
             });
             fetchPendingQueue();
             fetchDashboardData();
@@ -311,7 +320,7 @@ export default function Home() {
         // Optimistic UI update
         setPendingTransactions(prev => prev.filter(p => p._id !== tx_id));
         try {
-            await fetch("/api/finance/pending/reject", {
+            await fetch(`/api/finance/pending/${tx_id}/reject`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                 body: JSON.stringify({ tx_id })
@@ -326,10 +335,10 @@ export default function Home() {
         setPendingTransactions([]); // Optimistic clear
         try {
             await Promise.all(currentTxs.map(tx => 
-                fetch("/api/finance/pending/approve", {
+                fetch(`/api/finance/pending/${tx._id}/approve`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                    body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), category: tx.category })
+                    body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), type: tx.type || 'debit', category: tx.category })
                 })
             ));
             fetchPendingQueue();
@@ -343,7 +352,7 @@ export default function Home() {
         setPendingTransactions([]); // Optimistic clear
         try {
             await Promise.all(currentTxs.map(tx => 
-                fetch("/api/finance/pending/reject", {
+                fetch(`/api/finance/pending/${tx._id}/reject`, {
                     method: "DELETE",
                     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                     body: JSON.stringify({ tx_id: tx._id })
@@ -499,6 +508,8 @@ export default function Home() {
     };
 
     const handleUndo = async (chatId: string) => {
+        if (!window.confirm("Are you sure you want to undo this action and all subsequent actions? This cannot be reversed.")) return;
+        
         try {
             const res = await fetch("/api/finance/chat/undo", {
                 method: "POST",
@@ -547,7 +558,7 @@ export default function Home() {
                         fetchDashboardData={fetchDashboardData}
                         transactionSource={transactionSource}
                         setTransactionSource={setTransactionSource}
-                        rawProfile={summaryData}
+                        rawProfile={rawProfile}
                     />
                 )}
                 {activeTab === 'home' && (
@@ -557,7 +568,7 @@ export default function Home() {
                         fetchDashboardData={fetchDashboardData} 
                         transactionSource={transactionSource}
                         setTransactionSource={setTransactionSource}
-                        rawProfile={summaryData}
+                        rawProfile={rawProfile}
                     />
                 )}
                 {activeTab === 'chat' && (
@@ -583,6 +594,7 @@ export default function Home() {
                         handleReject={handleReject}
                         handleApproveAll={handleApproveAll}
                         handleRejectAll={handleRejectAll}
+                        rawProfile={rawProfile}
                     />
                 )}
                 {activeTab === 'settings' && (

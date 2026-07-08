@@ -46,7 +46,9 @@ async def get_financial_data(user_id: str) -> dict:
                     "userId": user_id,
                     "monthlyIncome": 0.0,
                     "totalBalance": 0.0,
-                    "activeSavingsGoals": []
+                    "activeSavingsGoals": [],
+                    "customCategories": ["Unknown"],
+                    "merchant_category_map": {}
                 },
                 "recentTransactions": []
             }
@@ -59,6 +61,9 @@ async def get_financial_data(user_id: str) -> dict:
     # Process ObjectId to string for JSON serialization compatibility
     for tx in recent_transactions:
         tx["_id"] = str(tx["_id"])
+        # Patch legacy transactions that don't have a type field
+        if "type" not in tx:
+            tx["type"] = "credit" if tx.get("category") == "Income" else "debit"
         
     return {
         "success": True,
@@ -69,7 +74,9 @@ async def get_financial_data(user_id: str) -> dict:
                 "totalBalance": profile.get("totalBalance", 0.0),
                 "bankBalance": profile.get("bankBalance", profile.get("totalBalance", 0.0)), # default to total if missing
                 "cashBalance": profile.get("cashBalance", 0.0),
-                "activeSavingsGoals": profile.get("activeSavingsGoals", [])
+                "activeSavingsGoals": profile.get("activeSavingsGoals", []),
+                "customCategories": profile.get("customCategories", ["Unknown"]),
+                "merchant_category_map": profile.get("merchant_category_map", {})
             },
             "recentTransactions": recent_transactions
         }
@@ -77,17 +84,18 @@ async def get_financial_data(user_id: str) -> dict:
 
 
 @tool
-async def add_transaction(user_id: str, name: str, amount: float, category: str, source: str = "bank", description: str = "", date: Optional[str] = None, *, config: RunnableConfig = None) -> dict:
+async def add_transaction(user_id: str, name: str, amount: float, type: str, category: str, source: str = "bank", description: str = "", date: Optional[str] = None, *, config: RunnableConfig = None) -> dict:
     """
     Adds a new transaction for a user and natively calculates the new total balance accurately.
-    Valid categories are 'Fixed', 'Variable', and 'Income'.
+    Valid types are 'debit' and 'credit'. Categories can be any string.
     Source can be 'bank' or 'cash'.
     
     Args:
         user_id: The unique identifier of the user.
         name: The merchant or title of the transaction.
         amount: The monetary amount of the transaction. Must be a positive number.
-        category: Must be 'Fixed', 'Variable', or 'Income'.
+        type: Must be 'debit' or 'credit'.
+        category: A string grouping the transaction (e.g. 'Food', 'Salary').
         source: Must be 'bank' or 'cash'. Default is 'bank'.
         description: An optional detailed description or notes.
         date: An optional ISO timestamp for when the transaction occurred.
@@ -100,7 +108,7 @@ async def add_transaction(user_id: str, name: str, amount: float, category: str,
     if db is None:
         return {"success": False, "message": "Database not connected"}
         
-    is_expense = category in ["Fixed", "Variable"]
+    is_expense = (type.lower() == "debit")
     effective_amount = -abs(amount) if is_expense else abs(amount)
     source_val = source.lower() if source else "bank"
     
@@ -117,6 +125,7 @@ async def add_transaction(user_id: str, name: str, amount: float, category: str,
         "name": name,
         "description": description,
         "amount": abs(amount),
+        "type": type.lower(),
         "category": category,
         "source": source_val,
         "date": tx_date,
@@ -149,7 +158,8 @@ async def add_transaction(user_id: str, name: str, amount: float, category: str,
         {"userId": user_id},
         {
             "$inc": {"totalBalance": float(effective_amount), balance_inc_field: float(effective_amount)}, 
-            "$set": {"updatedAt": datetime.datetime.utcnow()}
+            "$set": {"updatedAt": datetime.datetime.utcnow()},
+            "$addToSet": {"customCategories": category}
         },
         return_document=ReturnDocument.AFTER
     )
@@ -157,11 +167,12 @@ async def add_transaction(user_id: str, name: str, amount: float, category: str,
     if not updated_profile:
         profile_doc = {
             "userId": user_id,
-            "monthlyIncome": abs(amount) if category == "Income" else 0.0,
+            "monthlyIncome": abs(amount) if type.lower() == "credit" else 0.0,
             "totalBalance": float(effective_amount),
             "bankBalance": float(effective_amount) if source_val == "bank" else 0.0,
             "cashBalance": float(effective_amount) if source_val == "cash" else 0.0,
             "activeSavingsGoals": [],
+            "customCategories": ["Unknown", category] if category != "Unknown" else ["Unknown"],
             "createdAt": datetime.datetime.utcnow(),
             "updatedAt": datetime.datetime.utcnow()
         }
@@ -219,7 +230,7 @@ async def delete_transaction(user_id: str, transaction_id: str, *, config: Runna
     new_balance = 0.0
     
     if profile:
-        is_expense = target_tx["category"] in ["Fixed", "Variable"]
+        is_expense = (target_tx.get("type", "debit") == "debit")
         impact = -abs(target_tx["amount"]) if is_expense else abs(target_tx["amount"])
         
         # Substract the impact to reverse it
@@ -249,6 +260,7 @@ async def update_transaction(
     new_amount: Optional[float] = None, 
     new_name: Optional[str] = None,
     new_description: Optional[str] = None, 
+    new_type: Optional[str] = None,
     new_category: Optional[str] = None,
     new_source: Optional[str] = None,
     *, config: RunnableConfig = None
@@ -262,7 +274,8 @@ async def update_transaction(
         new_amount: The optional new amount.
         new_name: The optional new name/merchant.
         new_description: The optional new description.
-        new_category: The optional new category ('Fixed', 'Variable', 'Income').
+        new_type: The optional new type ('debit', 'credit').
+        new_category: The optional new category string.
         new_source: The optional new source ('bank', 'cash').
         
     Returns:
@@ -299,21 +312,24 @@ async def update_transaction(
         update_fields["name"] = new_name
     if new_description is not None:
         update_fields["description"] = new_description
+    if new_type is not None:
+        update_fields["type"] = new_type.lower()
     if new_category is not None:
         update_fields["category"] = new_category
     if new_source is not None:
         update_fields["source"] = new_source.lower()
         
     if update_fields and profile:
-        old_is_expense = target_tx["category"] in ["Fixed", "Variable"]
+        old_is_expense = (target_tx.get("type", "debit") == "debit")
         old_impact = -abs(target_tx["amount"]) if old_is_expense else abs(target_tx["amount"])
         old_source = target_tx.get("source", "bank")
         
-        category_to_use = update_fields.get("category", target_tx["category"])
+        type_to_use = update_fields.get("type", target_tx.get("type", "debit"))
+        category_to_use = update_fields.get("category", target_tx.get("category", "Unknown"))
         amount_to_use = update_fields.get("amount", target_tx["amount"])
         source_to_use = update_fields.get("source", old_source)
         
-        new_is_expense = category_to_use in ["Fixed", "Variable"]
+        new_is_expense = (type_to_use == "debit")
         new_impact = -abs(amount_to_use) if new_is_expense else abs(amount_to_use)
         
         # Calculate balance adjustments
@@ -352,11 +368,14 @@ async def update_transaction(
         
         await db.userprofiles.update_one(
             {"userId": user_id},
-            {"$set": {
-                "totalBalance": total_balance,
-                "bankBalance": bank_balance,
-                "cashBalance": cash_balance
-            }}
+            {
+                "$set": {
+                    "totalBalance": total_balance,
+                    "bankBalance": bank_balance,
+                    "cashBalance": cash_balance
+                },
+                "$addToSet": {"customCategories": category_to_use}
+            }
         )
         
         new_total_balance = total_balance

@@ -17,21 +17,35 @@ INGEST_API_KEY = os.getenv("INGEST_API_KEY", "your-secret-key-here")
 
 
 class ApproveRequest(BaseModel):
+    tx_id: str
     name: str
     description: str = ""
     amount: float
+    type: str = "debit"
     category: str
 
+class CategoryPayload(BaseModel):
+    category: str
 
 class BalanceUpdateRequest(BaseModel):
     source: str
     amount: float
+
+class TransactionAddRequest(BaseModel):
+    name: str
+    description: str = ""
+    amount: float
+    type: str
+    category: str
+    source: str = "bank"
+    date: Optional[str] = None
 
 
 class TransactionUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     amount: Optional[float] = None
+    type: Optional[str] = None
     category: Optional[str] = None
     source: Optional[str] = None
 
@@ -87,25 +101,43 @@ async def ingest_gpay_transaction(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
-    if txn_type == "income":
-        category = "Income"
-    else:
-        fixed_keywords = ["rent", "electricity", "jio", "airtel", "emi",
-                          "insurance", "wifi", "bsnl", "broadband", "bescom"]
-        category = "Fixed" if any(k in merchant.lower() for k in fixed_keywords) else "Variable"
-
     db = db_manager.db
+    profile = await db.userprofiles.find_one({"userId": x_user_id})
+    category = "Unknown"
+    if profile and "merchant_category_map" in profile:
+        category = profile["merchant_category_map"].get(merchant, "Unknown")
+        
     pending_doc = {
         "userId": x_user_id,
         "name": merchant,
         "description": "",
         "amount": amount,
+        "type": "debit",
         "category": category,
         "createdAt": datetime.datetime.utcnow()
     }
 
     await db.pending_transactions.insert_one(pending_doc)
     return {"success": True, "message": "Transaction queued for approval."}
+
+
+@router.post("/finance/categories")
+async def update_category_recency(payload: CategoryPayload, user: dict = Depends(get_current_user)):
+    """Pulls and pushes a category to make it recently used."""
+    db = db_manager.db
+    category = payload.category.strip()
+    if not category:
+        return {"success": False, "message": "Category cannot be empty"}
+        
+    await db.userprofiles.update_one(
+        {"userId": user["user_id"]},
+        {"$pull": {"customCategories": category}}
+    )
+    await db.userprofiles.update_one(
+        {"userId": user["user_id"]},
+        {"$push": {"customCategories": category}}
+    )
+    return {"success": True, "message": "Category updated"}
 
 
 @router.get("/finance/pending")
@@ -126,6 +158,26 @@ async def get_pending_transactions(req: Request, user: dict = Depends(get_curren
     return {"success": True, "data": pending}
 
 
+@router.post("/finance/transaction")
+async def create_tx(req: Request, payload: TransactionAddRequest, user: dict = Depends(get_current_user)):
+    """Manually adds a transaction from the frontend."""
+    result = await add_transaction.ainvoke({
+        "user_id": user["user_id"],
+        "name": payload.name,
+        "amount": payload.amount,
+        "type": payload.type,
+        "category": payload.category,
+        "source": payload.source,
+        "description": payload.description,
+        "date": payload.date
+    })
+    
+    if result.get("success"):
+        return {"success": True, "message": "Transaction added successfully."}
+    else:
+        raise HTTPException(status_code=400, detail=result.get("message", "Failed to add transaction"))
+
+
 @router.put("/finance/transaction/{tx_id}")
 async def update_tx(req: Request, tx_id: str, payload: TransactionUpdateRequest, user: dict = Depends(get_current_user)):
     gemini_keys_str = req.headers.get("X-Gemini-Api-Keys")
@@ -141,6 +193,7 @@ async def update_tx(req: Request, tx_id: str, payload: TransactionUpdateRequest,
         "new_amount": payload.amount,
         "new_name": payload.name,
         "new_description": payload.description,
+        "new_type": payload.type,
         "new_category": payload.category,
         "new_source": payload.source
     })
@@ -195,9 +248,19 @@ async def approve_pending(req: Request, tx_id: str, payload: ApproveRequest, use
         "name": payload.name,
         "description": payload.description,
         "amount": payload.amount,
+        "type": payload.type,
         "category": payload.category,
         "date": str(tx.get("createdAt")) if tx.get("createdAt") else None
     })
+
+    # Update merchant_category_map and customCategories
+    await db.userprofiles.update_one(
+        {"userId": user["user_id"]},
+        {
+            "$set": {f"merchant_category_map.{payload.name}": payload.category},
+            "$addToSet": {"customCategories": payload.category}
+        }
+    )
 
     await db.pending_transactions.delete_one({"_id": obj_id})
     return result
@@ -262,8 +325,8 @@ async def upload_image(req: Request, file: UploadFile = File(...), user: dict = 
             Each object must have exactly these keys:
             - "merchant": A short string name of the vendor or person.
             - "amount": A positive float representing the monetary value.
-            - "type": Either "expense" or "income".
-            - "category": Either "Fixed", "Variable", or "Income".
+            - "type": Either "debit" or "credit".
+            - "category": A string representing the category (e.g. Food, Transport, Unknown).
             '''
             
             response = model.generate_content([
@@ -301,7 +364,8 @@ async def upload_image(req: Request, file: UploadFile = File(...), user: dict = 
             "batchId": batch_id,
             "description": tx.get("merchant", "Unknown"),
             "amount": float(tx.get("amount", 0)),
-            "category": tx.get("category", "Variable"),
+            "type": tx.get("type", "debit").lower(),
+            "category": tx.get("category", "Unknown"),
             "createdAt": datetime.datetime.utcnow()
         })
         
@@ -333,10 +397,18 @@ async def approve_batch(req: Request, batch_id: str, user: dict = Depends(get_cu
     for tx in pending_txs:
         await add_transaction.ainvoke({
             "user_id": user["user_id"],
-            "description": tx["description"],
+            "name": tx["description"],
             "amount": tx["amount"],
+            "type": tx.get("type", "debit"),
             "category": tx["category"]
         })
+        await db.userprofiles.update_one(
+            {"userId": user["user_id"]},
+            {
+                "$set": {f"merchant_category_map.{tx['description']}": tx['category']},
+                "$addToSet": {"customCategories": tx['category']}
+            }
+        )
         await db.pending_transactions.delete_one({"_id": tx["_id"]})
         approved_count += 1
         

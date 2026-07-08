@@ -42,7 +42,7 @@ async def execute_revert_action(user_id: str, log: dict):
             tx_id = ObjectId(tx_id)
         tx = await db.transactions.find_one({"_id": tx_id})
         if tx:
-            is_expense = tx["category"] in ["Fixed", "Variable"]
+            is_expense = (tx.get("type", "debit") == "debit") if "type" in tx else (tx.get("category") in ["Fixed", "Variable"])
             impact = -abs(tx["amount"]) if is_expense else abs(tx["amount"])
             source = tx.get("source", "bank")
             b_field = "bankBalance" if source == "bank" else "cashBalance"
@@ -59,7 +59,7 @@ async def execute_revert_action(user_id: str, log: dict):
         if "_id" in doc:
             doc["_id"] = ObjectId(doc["_id"]) if len(doc["_id"]) == 24 else doc["_id"]
         
-        is_expense = doc["category"] in ["Fixed", "Variable"]
+        is_expense = (doc.get("type", "debit") == "debit") if "type" in doc else (doc.get("category") in ["Fixed", "Variable"])
         impact = -abs(doc["amount"]) if is_expense else abs(doc["amount"])
         source = doc.get("source", "bank")
         b_field = "bankBalance" if source == "bank" else "cashBalance"
@@ -82,12 +82,12 @@ async def execute_revert_action(user_id: str, log: dict):
         current_tx = await db.transactions.find_one({"_id": tx_id})
         if current_tx:
             # Revert balance: reverse current impact, apply old impact
-            curr_expense = current_tx["category"] in ["Fixed", "Variable"]
+            curr_expense = (current_tx.get("type", "debit") == "debit") if "type" in current_tx else (current_tx.get("category") in ["Fixed", "Variable"])
             curr_impact = -abs(current_tx["amount"]) if curr_expense else abs(current_tx["amount"])
             curr_src = current_tx.get("source", "bank")
             c_field = "bankBalance" if curr_src == "bank" else "cashBalance"
             
-            old_expense = old_doc["category"] in ["Fixed", "Variable"]
+            old_expense = (old_doc.get("type", "debit") == "debit") if "type" in old_doc else (old_doc.get("category") in ["Fixed", "Variable"])
             old_impact = -abs(old_doc["amount"]) if old_expense else abs(old_doc["amount"])
             old_src = old_doc.get("source", "bank")
             o_field = "bankBalance" if old_src == "bank" else "cashBalance"
