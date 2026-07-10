@@ -45,3 +45,16 @@ next-env.d.ts
 # databases and local vectors
 local_qdrant/
 *.sqlite3
+
+# Scripts and unwanted output
+seed_*.py
+skills/
+brag-output/
+error.txt
+out.txt
+scratch/
+test_*.py
+tools_append.py
+query.py
+fix_*.py
+reset_*.py
