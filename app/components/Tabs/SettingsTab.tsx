@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Key, LogOut, Plus, X, AlertTriangle, Bomb } from 'lucide-react';
+import { Settings, Key, LogOut, Plus, X, AlertTriangle, Bomb, Brain } from 'lucide-react';
 
 interface SettingsTabProps {
     authUser: any;
@@ -15,6 +15,9 @@ interface SettingsTabProps {
     handleChangePassword: (e: React.FormEvent) => void;
     saveKeysToBackend: () => void;
     getAuthHeaders: () => any;
+    textScale: number;
+    setTextScale: (val: number) => void;
+    rawProfile?: any;
 }
 
 export default function SettingsTab({
@@ -30,12 +33,21 @@ export default function SettingsTab({
     setPasswordForm,
     handleChangePassword,
     saveKeysToBackend,
-    getAuthHeaders
+    getAuthHeaders,
+    textScale,
+    setTextScale,
+    rawProfile
 }: SettingsTabProps) {
-    const [settingsTab, setSettingsTab] = useState<'api_keys' | 'account'>('api_keys');
+    const [settingsTab, setSettingsTab] = useState<'api_keys' | 'account' | 'groups' | 'memory'>('api_keys');
     const [showNukeModal, setShowNukeModal] = useState(false);
     const [nukeCountdown, setNukeCountdown] = useState(10);
     const [isNuking, setIsNuking] = useState(false);
+    
+    // Group Management State
+    const [myGroups, setMyGroups] = useState<any[]>([]);
+    const [newGroupName, setNewGroupName] = useState('');
+    const [inviteUserId, setInviteUserId] = useState('');
+    const [selectedGroupId, setSelectedGroupId] = useState('');
 
     useEffect(() => {
         let timer: NodeJS.Timeout;
@@ -46,6 +58,68 @@ export default function SettingsTab({
         }
         return () => clearInterval(timer);
     }, [showNukeModal, nukeCountdown]);
+    
+    useEffect(() => {
+        if (settingsTab === 'groups') {
+            fetchGroups();
+        }
+    }, [settingsTab]);
+
+    const fetchGroups = async () => {
+        try {
+            const res = await fetch('/api/finance/groups', {
+                headers: getAuthHeaders()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMyGroups(data);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+    
+    const handleCreateGroup = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newGroupName.trim()) return;
+        try {
+            const res = await fetch('/api/finance/groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ name: newGroupName })
+            });
+            if (res.ok) {
+                setNewGroupName('');
+                fetchGroups();
+                window.dispatchEvent(new Event('refreshDashboard'));
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+    
+    const handleAddMember = async (e: React.FormEvent, groupId: string) => {
+        e.preventDefault();
+        if (!inviteUserId.trim()) return;
+        try {
+            const res = await fetch(`/api/finance/groups/${groupId}/members`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ userId: inviteUserId, role: 'contributor' })
+            });
+            if (res.ok) {
+                setInviteUserId('');
+                fetchGroups();
+                window.dispatchEvent(new Event('refreshDashboard'));
+                alert("Member added successfully!");
+            } else {
+                const data = await res.json();
+                alert(data.detail || "Failed to add member.");
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     const handleNukeData = async () => {
         setIsNuking(true);
@@ -73,18 +147,30 @@ export default function SettingsTab({
                 <Settings className="w-8 h-8" strokeWidth={3} /> Settings
             </h1>
 
-            <div className="flex border-4 border-black bg-white overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
+            <div className="flex border-4 border-black bg-white overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6 flex-col md:flex-row">
                 <button 
                     onClick={() => setSettingsTab('api_keys')}
-                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base border-r-4 border-black transition-colors flex items-center justify-center gap-2 ${settingsTab === 'api_keys' ? 'bg-[#008CD4] text-black' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base md:border-r-4 border-b-4 md:border-b-0 border-black transition-colors flex items-center justify-center gap-2 ${settingsTab === 'api_keys' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <Key className="w-5 h-5" /> API Keys
                 </button>
                 <button 
                     onClick={() => setSettingsTab('account')}
-                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base transition-colors flex items-center justify-center gap-2 ${settingsTab === 'account' ? 'bg-[#008CD4] text-black' : 'hover:bg-gray-100 text-black'}`}
+                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base md:border-r-4 border-b-4 md:border-b-0 border-black transition-colors flex items-center justify-center gap-2 ${settingsTab === 'account' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
                 >
                     <Settings className="w-5 h-5" /> Account
+                </button>
+                <button 
+                    onClick={() => setSettingsTab('groups')}
+                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base transition-colors flex items-center justify-center gap-2 ${settingsTab === 'groups' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
+                >
+                    <Plus className="w-5 h-5" /> Groups
+                </button>
+                <button 
+                    onClick={() => setSettingsTab('memory')}
+                    className={`flex-1 py-4 font-black uppercase text-sm md:text-base transition-colors flex items-center justify-center gap-2 ${settingsTab === 'memory' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
+                >
+                    <Brain className="w-5 h-5" /> Memory
                 </button>
             </div>
 
@@ -227,6 +313,81 @@ export default function SettingsTab({
                             Save API Keys
                         </button>
                     </div>
+                ) : settingsTab === 'groups' ? (
+                    <div>
+                        <h3 className="text-2xl font-black uppercase mb-6">Manage Groups</h3>
+                        
+                        <form onSubmit={handleCreateGroup} className="mb-8 p-4 bg-[#f4f4f4] border-4 border-black flex gap-2">
+                            <input
+                                type="text"
+                                placeholder="New Group Name (e.g. Family Budget)"
+                                value={newGroupName}
+                                onChange={e => setNewGroupName(e.target.value)}
+                                className="flex-1 p-3 border-4 border-black focus:outline-none font-mono"
+                                required
+                            />
+                            <button type="submit" className="brutalist-button px-6">Create</button>
+                        </form>
+                        
+                        <div className="space-y-6">
+                            {myGroups.length === 0 ? (
+                                <p className="font-mono text-gray-500">You are not part of any groups yet.</p>
+                            ) : (
+                                myGroups.map(group => (
+                                    <div key={group.id} className="border-4 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                        <h4 className="font-black uppercase text-xl mb-2">{group.name}</h4>
+                                        <p className="font-mono text-sm mb-4">Admin: {group.admin_user_id}</p>
+                                        
+                                        <div className="mb-4">
+                                            <strong className="uppercase text-sm border-b-2 border-black inline-block mb-2">Members:</strong>
+                                            <ul className="list-disc pl-5 font-mono text-sm">
+                                                {group.members.map((m: any, i: number) => (
+                                                    <li key={i}>{m.userId} ({m.role})</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                        
+                                        {group.admin_user_id === (authUser?.username || authUser?.email || "user123") && (
+                                            <form onSubmit={(e) => handleAddMember(e, group.id)} className="flex gap-2 mt-4">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Invite by User ID"
+                                                    value={selectedGroupId === group.id ? inviteUserId : ''}
+                                                    onChange={e => {
+                                                        setSelectedGroupId(group.id);
+                                                        setInviteUserId(e.target.value);
+                                                    }}
+                                                    className="flex-1 p-2 border-2 border-black focus:outline-none font-mono text-sm"
+                                                    required
+                                                />
+                                                <button type="submit" className="bg-black text-white px-4 font-bold uppercase text-sm hover:bg-[#008CD4] transition-colors border-2 border-black">Invite</button>
+                                            </form>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                ) : settingsTab === 'memory' ? (
+                    <div>
+                        <h3 className="text-2xl font-black uppercase mb-2">Long-Term Memory</h3>
+                        <p className="font-mono text-sm text-gray-600 mb-6">These are the facts and preferences the agent has explicitly remembered about you to provide tailored advice and save tokens.</p>
+                        
+                        <div className="space-y-4">
+                            {(!rawProfile?.preferences || Object.keys(rawProfile.preferences).length === 0) ? (
+                                <div className="p-4 bg-[#f4f4f4] border-4 border-black text-center font-mono">
+                                    No memories stored yet. Tell the agent "Remember that I want to retire at 50" to see it here!
+                                </div>
+                            ) : (
+                                Object.entries(rawProfile.preferences).map(([key, value]) => (
+                                    <div key={key} className="flex flex-col md:flex-row md:items-center justify-between p-4 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white">
+                                        <div className="font-black uppercase text-lg">{key}</div>
+                                        <div className="font-mono bg-[#f4f4f4] px-3 py-1 border-2 border-black md:mt-0 mt-2">{String(value)}</div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 ) : (
                     <div>
                         <h3 className="text-2xl font-black uppercase mb-6">Account Settings</h3>
@@ -234,6 +395,28 @@ export default function SettingsTab({
                         <div className="mb-8 p-4 bg-[#f4f4f4] border-4 border-black">
                             <p className="font-bold uppercase text-sm text-gray-600 mb-1">Logged in as</p>
                             <p className="text-xl font-black">{authUser?.username || authUser?.email || "User"}</p>
+                        </div>
+                        
+                        {/* FONT SIZE SLIDER */}
+                        <div className="mb-8">
+                            <h4 className="font-bold uppercase border-b-2 border-black pb-2 mb-4 flex items-center justify-between">
+                                Text Size
+                                <span className="text-sm font-mono bg-black text-white px-2">{textScale}x</span>
+                            </h4>
+                            <input 
+                                type="range" 
+                                min="0.5" 
+                                max="1.5" 
+                                step="0.1" 
+                                value={textScale}
+                                onChange={(e) => setTextScale(parseFloat(e.target.value))}
+                                className="w-full accent-black cursor-pointer"
+                            />
+                            <div className="flex justify-between text-xs font-mono font-bold mt-2">
+                                <span>Small (0.5x)</span>
+                                <span>Normal (1.0x)</span>
+                                <span>Large (1.5x)</span>
+                            </div>
                         </div>
                         
                         <form onSubmit={handleChangePassword} className="space-y-4 mb-8">
