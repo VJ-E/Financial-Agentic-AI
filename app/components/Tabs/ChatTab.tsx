@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Send, LogOut, Image as ImageIcon, X, Undo2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import AgentAvatar from '../AgentAvatar';
 
 interface ChatTabProps {
     messages: any[];
@@ -15,14 +16,51 @@ interface ChatTabProps {
     selectedImageFile: File | null;
     setSelectedImageFile: (file: File | null) => void;
     handleUndo: (chatId: string) => void;
+    activeSkill?: string;
 }
 
-export default function ChatTab({ messages, input, setInput, handleSubmit, isLoading, messagesEndRef, fileInputRef, handleImageUpload, isUploading, selectedImageFile, setSelectedImageFile, handleUndo }: ChatTabProps) {
+export default function ChatTab({ messages, input, setInput, handleSubmit, isLoading, messagesEndRef, fileInputRef, handleImageUpload, isUploading, selectedImageFile, setSelectedImageFile, handleUndo, activeSkill = "CORE_SKILL" }: ChatTabProps) {
+    const [avatarState, setAvatarState] = useState<"idle" | "waiting" | "success" | "error" | "surprise" | "inspect">("idle");
+    const prevMessagesLen = useRef(messages.length);
+
+    useEffect(() => {
+        if (isLoading) {
+            setAvatarState("waiting");
+        } else if (messages.length > prevMessagesLen.current) {
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+                if (lastMsg.content.includes("CRITICAL ERROR")) {
+                    setAvatarState("error");
+                } else {
+                    setAvatarState("success");
+                }
+            }
+        } else {
+            // Idle random state every so often? Actually let's just trigger a random emotion sometimes when idle.
+            // A simple approach is just picking one randomly when it turns idle.
+            const states: ("idle" | "success" | "surprise" | "inspect")[] = ["idle", "success", "surprise", "inspect"];
+            setAvatarState(states[Math.floor(Math.random() * states.length)]);
+        }
+        prevMessagesLen.current = messages.length;
+    }, [isLoading, messages]);
+
+    useEffect(() => {
+        if (avatarState !== 'idle' && avatarState !== 'waiting') {
+            const t = setTimeout(() => setAvatarState('idle'), 3000);
+            return () => clearTimeout(t);
+        }
+    }, [avatarState]);
+
     return (
         <div className="flex flex-col h-[calc(100vh-80px)] w-full bg-white">
             {/* Header */}
-            <div className="p-4 border-b-4 border-black bg-[#008CD4] flex justify-between items-center">
-                <h2 className="text-xl font-black uppercase tracking-tight text-black">Agent Chat</h2>
+            <div className="p-4 border-b-4 border-black bg-[#008CD4] flex justify-between items-center overflow-hidden">
+                <div className="flex items-center gap-4">
+                    <h2 className="text-xl font-black uppercase tracking-tight text-black">Agent Chat</h2>
+                    <div className="bg-black text-white text-xs font-bold px-2 py-1 uppercase shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]">
+                        {activeSkill.replace('_SKILL', ' MODE')}
+                    </div>
+                </div>
             </div>
             
             {/* Messages Area */}
@@ -43,6 +81,11 @@ export default function ChatTab({ messages, input, setInput, handleSubmit, isLoa
                         {messages.map((m, idx) => (
                             <div key={idx} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                                 <div className="flex items-start gap-2 w-full">
+                                    {m.role === 'assistant' && (
+                                        <div className="flex-shrink-0 mt-1">
+                                            <AgentAvatar size="48px" color="#000000" state={idx === messages.length - 1 ? avatarState : "idle"} />
+                                        </div>
+                                    )}
                                     <div className={`p-4 border-[3px] border-black font-sans w-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
                                         m.role === 'user' ? 'bg-[#008CD4] text-white font-bold' : 'bg-white text-black font-medium'
                                     }`}>
