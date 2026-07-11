@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { IndianRupee, ArrowUpRight, ArrowDownRight, Activity, Plus } from 'lucide-react';
 import TransactionModal from '../Modals/TransactionModal';
 import AddTransactionModal from '../Modals/AddTransactionModal';
+import FloatingAvatar from '../FloatingAvatar';
 
 interface HomeTabProps {
     financeData: any;
@@ -90,6 +91,11 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
             
             {/* Balance Card */}
             <div className="bg-[#008CD4] p-6 border-[3px] border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                {rawProfile?.activeGroupId && (
+                    <div className="mb-4 inline-block bg-black text-white px-3 py-1 font-bold uppercase text-xs">
+                        Group Mode Active
+                    </div>
+                )}
                 <p className="font-mono text-sm font-bold uppercase tracking-wider mb-1 text-black">Current Balance {transactionSource !== 'all' ? `(${transactionSource})` : ''}</p>
                 {isEditingBalance ? (
                     <div className="flex items-center gap-2 mt-2">
@@ -162,7 +168,12 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
                         {filteredTransactions.slice(0, 10).map((tx: any, idx: number) => (
                             <div key={idx} onClick={() => setSelectedTx(tx)} className="bg-white border-[3px] border-black p-4 flex justify-between items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform cursor-pointer">
                                 <div>
-                                    <p className="font-bold text-lg leading-tight uppercase">{tx.category || 'Unknown'}</p>
+                                    <p className="font-bold text-lg leading-tight uppercase">
+                                        {tx.category || 'Unknown'}
+                                        {rawProfile?.activeGroupId && tx.userId && (
+                                            <span className="ml-2 text-xs bg-gray-200 text-black px-2 py-0.5 border border-black">{tx.userId}</span>
+                                        )}
+                                    </p>
                                     <p className="font-mono text-xs text-gray-500 mt-1">
                                         {tx.name || tx.description} &bull; {new Date(tx.date).toLocaleDateString()} 
                                         <span className="ml-2 px-2 py-0.5 bg-gray-200 text-black border border-black font-bold uppercase text-[10px]">{tx.source || 'Bank'}</span>
@@ -199,6 +210,8 @@ export default function HomeTab({ financeData, getAuthHeaders, fetchDashboardDat
                     rawProfile={rawProfile}
                 />
             )}
+
+            <FloatingAvatar />
         </div>
     );
 }
