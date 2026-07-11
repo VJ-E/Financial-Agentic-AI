@@ -11,6 +11,13 @@
     --brutalist-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
     --brutalist-shadow-hover: 2px 2px 0px 0px rgba(0, 0, 0, 1);
     --brutalist-shadow-active: 0px 0px 0px 0px rgba(0, 0, 0, 1);
+    --text-scale: 1;
+  }
+
+  @media (max-width: 768px) {
+    :root {
+      --text-scale: 0.75;
+    }
   }
 
   body {
