@@ -8,9 +8,10 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, AIMessage
 
 from backend.agent.state import AgentState
+from backend.db.mongo import db_manager
 from backend.agent.tools import (
     get_financial_data,
     add_transaction,
@@ -20,7 +21,16 @@ from backend.agent.tools import (
     fund_goal,
     search_history,
     web_search,
-    delete_goal
+    delete_goal,
+    update_memory,
+    tax_calculator,
+    investment_analyzer,
+    audit_subscriptions,
+    calculate_emergency_fund,
+    review_spending,
+    track_financial_goal,
+    detect_lifestyle_creep,
+    calculate_net_worth
 )
 
 # Neo-Brutalist System Prompt migrated directly from the original Next.js AI API
@@ -46,29 +56,62 @@ CRITICAL RULES:
 11. FORMATTING: ALWAYS format your responses using Markdown. Use **bold** for numbers/balances, `#` or `##` for section headings, and `-` for bulleted lists. If summarizing large data (like transactions or goals), NEVER dump raw arrays. Instead, group them into a concise, beautifully structured bulleted list.
 """
 
-tools = [
-    get_financial_data,
-    add_transaction,
-    delete_transaction,
-    update_transaction,
-    create_goal,
-    fund_goal,
-    delete_goal,
-    search_history,
-    web_search
-]
+PLAYBOOKS = {
+    "CORE_SKILL": [get_financial_data, add_transaction, delete_transaction, update_transaction, calculate_net_worth],
+    "GOAL_SKILL": [get_financial_data, create_goal, fund_goal, delete_goal, track_financial_goal, calculate_emergency_fund],
+    "RESEARCH_SKILL": [get_financial_data, web_search, search_history, update_memory],
+    "TAX_SKILL": [get_financial_data, tax_calculator],
+    "INVESTMENT_SKILL": [get_financial_data, investment_analyzer, web_search],
+    "BUDGET_SKILL": [get_financial_data, audit_subscriptions, review_spending, detect_lifestyle_creep]
+}
 
-# 2. Define the Nodes
+ALL_TOOLS = []
+for p in PLAYBOOKS.values():
+    ALL_TOOLS.extend(p)
+ALL_TOOLS = list({t.name: t for t in ALL_TOOLS}.values())
+
+async def router_node(state: AgentState):
+    """
+    Lightning fast router to select the playbook and load user context.
+    """
+    messages = state.get("messages", [])
+    if not messages:
+        return {"active_skill": "CORE_SKILL", "user_context": ""}
+        
+    last_msg = messages[-1].content if messages else ""
+    user_id = state.get("user_id", "unknown")
+    
+    # Simple heuristic routing for speed and zero-token usage
+    lower_msg = str(last_msg).lower()
+    active_skill = "CORE_SKILL"
+    if "tax" in lower_msg or "deduction" in lower_msg or "80c" in lower_msg:
+        active_skill = "TAX_SKILL"
+    elif any(k in lower_msg for k in ["invest", "stock", "nifty", "return", "cagr", "mutual fund", "sip"]):
+        active_skill = "INVESTMENT_SKILL"
+    elif any(k in lower_msg for k in ["goal", "save for", "vault", "target", "emergency"]):
+        active_skill = "GOAL_SKILL"
+    elif any(k in lower_msg for k in ["budget", "spending", "subscription", "recurring", "creep", "lifestyle"]):
+        active_skill = "BUDGET_SKILL"
+    elif any(k in lower_msg for k in ["search", "remember", "news", "preference", "forget"]):
+        active_skill = "RESEARCH_SKILL"
+        
+    # Fetch user memory
+    user_context = ""
+    if db_manager.db is not None:
+        profile = await db_manager.db.userprofiles.find_one({"userId": user_id})
+        if profile and "preferences" in profile:
+            prefs = profile["preferences"]
+            user_context = ", ".join([f"{k}: {v}" for k, v in prefs.items()])
+            
+    return {"active_skill": active_skill, "user_context": user_context}
+
 def chatbot(state: AgentState):
     """
     The central intelligence node. Evaluates input, reviews memory state, and interacts 
-    with strictly bound system parameters.
+    with strictly bound system parameters based on the active playbook.
     """
     messages = state["messages"]
     
-    # CRITICAL FIX: Groq API often crashes (Failed to call a function) when older conversation turns 
-    # contain ToolMessages or AIMessages with tool_calls. 
-    # We filter out tool calls from previous turns to keep the context clean.
     last_human_idx = -1
     for i in range(len(messages) - 1, -1, -1):
         if messages[i].type == "human":
@@ -85,7 +128,6 @@ def chatbot(state: AgentState):
                     if not m.content:
                         continue
                     else:
-                        from langchain_core.messages import AIMessage
                         m = AIMessage(content=m.content)
         filtered_messages.append(m)
         
@@ -95,7 +137,6 @@ def chatbot(state: AgentState):
     valid_keys = [k for k in frontend_keys if k.strip()]
     
     if not valid_keys:
-        # Fallback to backend environment variables if frontend didn't supply any
         groq_keys = [
             os.getenv("GROQ_API_KEY_1", os.getenv("GROQ_API_KEY")),
             os.getenv("GROQ_API_KEY_2"),
@@ -105,12 +146,14 @@ def chatbot(state: AgentState):
         if not valid_keys:
             valid_keys = ["missing_key"]
 
+    active_skill = state.get("active_skill", "CORE_SKILL")
+    skill_tools = PLAYBOOKS.get(active_skill, PLAYBOOKS["CORE_SKILL"])
+
     all_runnables = []
     for key in valid_keys:
-        all_runnables.append(ChatGroq(api_key=key, model="llama-3.3-70b-versatile", temperature=0, max_retries=1).bind_tools(tools))
-        all_runnables.append(ChatGroq(api_key=key, model="llama3-8b-8192", temperature=0, max_retries=1).bind_tools(tools))
+        all_runnables.append(ChatGroq(api_key=key, model="openai/gpt-oss-20b", temperature=0, max_retries=1).bind_tools(skill_tools))
+        all_runnables.append(ChatGroq(api_key=key, model="llama3-8b-8192", temperature=0, max_retries=1).bind_tools(skill_tools))
 
-    # Add OpenRouter Fallbacks
     openrouter_keys = state.get("openrouter_api_keys", [])
     valid_or_keys = [k for k in openrouter_keys if k.strip()]
     for key in valid_or_keys:
@@ -121,50 +164,46 @@ def chatbot(state: AgentState):
                 model="meta-llama/llama-3.3-70b-instruct", 
                 temperature=0, 
                 max_retries=1
-            ).bind_tools(tools)
+            ).bind_tools(skill_tools)
         )
 
     llm_with_tools = all_runnables[0].with_fallbacks(all_runnables[1:])
     
-    # Prepend the strict system instructions right before evaluating new outputs 
-    # guaranteeing rules are prioritized effectively alongside generic memory.
     user_id = state.get("user_id", "unknown")
-    sys_instruction = SYSTEM_INSTRUCTION.strip() + f"\n\nCRITICAL: You are acting on behalf of user ID '{user_id}'. You MUST ALWAYS pass '{user_id}' EXACTLY as the user_id argument for all your tools."
+    user_context = state.get("user_context", "")
+    context_str = f"USER PREFERENCES (LONG-TERM MEMORY):\n{user_context}" if user_context else ""
+    sys_instruction = SYSTEM_INSTRUCTION.strip() + f"\n\n{context_str}\n\nCRITICAL: You are acting on behalf of user ID '{user_id}'. You MUST ALWAYS pass '{user_id}' EXACTLY as the user_id argument for all your tools."
+    
+    # Also inject the active skill so the LLM knows its persona
+    sys_instruction += f"\n\nACTIVE PLAYBOOK: {active_skill}"
+    
     sys_msg = SystemMessage(content=sys_instruction)
     
-    # Invoke model securely with bound capabilities
     try:
         response = llm_with_tools.invoke([sys_msg] + messages)
     except Exception as e:
-        from langchain_core.messages import AIMessage
         print(f"LLM Invoke Error: {e}")
-        # Fallback graceful response instead of crashing the backend
         response = AIMessage(content="[SYSTEM]: API validation error occurred while planning tool execution. The agent engine blocked a malformed tool call. Please rephrase your query directly.")
     
     return {"messages": [response]}
 
-# Initialize the generic Prebuilt ToolNode taking the mapped array of actions
-tools_node = ToolNode(tools=tools)
+# Initialize the generic Prebuilt ToolNode with ALL possible tools so it can execute whatever the LLM requested
+tools_node = ToolNode(tools=ALL_TOOLS)
 
-# 3. Compile the Graph
 graph_builder = StateGraph(AgentState)
 
+graph_builder.add_node("router", router_node)
 graph_builder.add_node("chatbot", chatbot)
 graph_builder.add_node("tools", tools_node)
 
-# Flow Setup
-graph_builder.add_edge(START, "chatbot")
+graph_builder.add_edge(START, "router")
+graph_builder.add_edge("router", "chatbot")
 
-# Evaluates whether a tool_call was invoked in the latest AI response. 
-# Routes cleanly to "tools" natively built node OR cascades to END.
 graph_builder.add_conditional_edges(
     "chatbot",
     tools_condition,
 )
 
-# After finishing executing an external operation, the flow strictly cycles back 
-# to 'chatbot' allowing the agent to visualize the resulting output strings.
 graph_builder.add_edge("tools", "chatbot")
 
-# Compile resolving to the memory-bounded runtime App instance
 app_graph = graph_builder.compile()
