@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart2, Home as HomeIcon, MessageSquare, Bell, Settings, Briefcase, CreditCard, IndianRupee, Copy } from 'lucide-react';
+import { BarChart2, Home as HomeIcon, MessageSquare, Bell, Settings, Briefcase, CreditCard, IndianRupee, Copy, Menu } from 'lucide-react';
 import HomeTab from './components/Tabs/HomeTab';
 import AnalysisTab from './components/Tabs/AnalysisTab';
 import ChatTab from './components/Tabs/ChatTab';
 import NotificationsTab from './components/Tabs/NotificationsTab';
 import SettingsTab from './components/Tabs/SettingsTab';
+import LandingPage from './components/LandingPage';
 type Message = {
     role: "user" | "assistant";
     content: string;
@@ -29,15 +30,20 @@ const defaultTopSpending = [
     { category: "Transport", amount: 0, icon: <IndianRupee className="w-6 h-6" /> },
 ];
 
+
 export default function Home() {
     const router = useRouter();
     const [input, setInput] = useState("");
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isPageLoading, setIsPageLoading] = useState(true);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'analysis' | 'home' | 'chat' | 'notifications' | 'settings'>('home');
+    const [activeSkill, setActiveSkill] = useState<string>("CORE_SKILL");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [textScale, setTextScale] = useState(1);
     const [apiKeys, setApiKeys] = useState<string[]>([]);
     const [geminiApiKeys, setGeminiApiKeys] = useState<string[]>([]);
     const [openRouterApiKeys, setOpenRouterApiKeys] = useState<string[]>([]);
@@ -124,6 +130,22 @@ export default function Home() {
     const [isQueueOpen, setIsQueueOpen] = useState(false);
     const [rawProfile, setRawProfile] = useState<any>(null);
 
+    const [myGroups, setMyGroups] = useState<any[]>([]);
+
+    const fetchUserGroups = async (token: string) => {
+        try {
+            const res = await fetch('/api/finance/groups', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMyGroups(data);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
     const fetchDashboardData = async () => {
         try {
             const controller = new AbortController();
@@ -140,9 +162,10 @@ export default function Home() {
             clearTimeout(timeoutId);
             
             if (res.status === 401) {
-                localStorage.removeItem("token");
-                localStorage.removeItem("user");
-                window.location.href = "/login";
+                localStorage.removeItem("auth_token");
+                localStorage.removeItem("auth_user");
+                setIsAuthenticated(false);
+                setIsPageLoading(false);
                 return;
             }
             if (!res.ok) throw new Error("Failed to fetch dashboard data");
@@ -174,10 +197,7 @@ export default function Home() {
                 }
             }
 
-            // In a production app, we would dynamically aggregate transactions here
-            // For MVP, if there are transactions, we group them rudimentary or map them.
             if (data.recentTransactions && data.recentTransactions.length > 0) {
-                // Basic mapping of recent transactions to the Top Spending format for visual verification
                 const recentAsSpending = data.recentTransactions.slice(0, 3).map((t: any) => ({
                     category: t.description || t.category,
                     amount: t.amount,
@@ -205,8 +225,13 @@ export default function Home() {
                 }));
                 setCashFlowData(cashFlowMvPData as any);
 
-                // Store raw transactions for the ledger
                 setRecentLedgerData(data.recentTransactions);
+            } else {
+                // If there are no transactions (e.g. empty group or empty personal), reset the lists
+                setRecentLedgerData([]);
+                setCashFlowData([]);
+                setExpensesBarData([]);
+                setTopSpendingData(defaultTopSpending);
             }
         } catch (error) {
             console.error(error);
@@ -222,9 +247,10 @@ export default function Home() {
                 cache: 'no-store'
             });
             if (res.status === 401) {
-                localStorage.removeItem("token");
-                localStorage.removeItem("user");
-                window.location.href = "/login";
+                localStorage.removeItem("auth_token");
+                localStorage.removeItem("auth_user");
+                setIsAuthenticated(false);
+                setIsPageLoading(false);
                 return;
             }
             if (res.ok) {
@@ -249,17 +275,29 @@ export default function Home() {
     useEffect(() => {
         const token = localStorage.getItem("auth_token");
         if (!token) {
-            router.push("/login");
+            setIsAuthenticated(false);
+            setIsPageLoading(false);
             return;
         }
+        setIsAuthenticated(true);
         const storedUser = localStorage.getItem("auth_user");
         if (storedUser) {
             try { setAuthUser(JSON.parse(storedUser)); } catch(e) {}
         }
         fetchDashboardData();
         fetchPendingQueue();
+        fetchUserGroups(token);
         
-        const handleRefresh = () => fetchDashboardData();
+        const storedScale = localStorage.getItem("text_scale");
+        if (storedScale) {
+            setTextScale(parseFloat(storedScale));
+            document.documentElement.style.setProperty('--text-scale', storedScale);
+        }
+
+        const handleRefresh = () => {
+            fetchDashboardData();
+            fetchUserGroups(token);
+        };
         window.addEventListener('refreshDashboard', handleRefresh);
         
         // Fetch keys from backend
@@ -296,6 +334,12 @@ export default function Home() {
         };
     }, [router]);
 
+    const handleSetTextScale = (scale: number) => {
+        setTextScale(scale);
+        localStorage.setItem("text_scale", scale.toString());
+        document.documentElement.style.setProperty('--text-scale', scale.toString());
+    };
+
     const handleQueueChange = (idx: number, field: string, val: any) => {
         const newQueue = [...pendingTransactions];
         newQueue[idx][field] = val;
@@ -306,7 +350,7 @@ export default function Home() {
         // Optimistic UI update
         setPendingTransactions(prev => prev.filter(p => p._id !== tx._id));
         try {
-            await fetch(`/api/finance/pending/${tx._id}/approve`, {
+            await fetch(`/api/finance/pending/approve`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                 body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), type: tx.type || 'debit', category: tx.category })
@@ -320,7 +364,7 @@ export default function Home() {
         // Optimistic UI update
         setPendingTransactions(prev => prev.filter(p => p._id !== tx_id));
         try {
-            await fetch(`/api/finance/pending/${tx_id}/reject`, {
+            await fetch(`/api/finance/pending/reject`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                 body: JSON.stringify({ tx_id })
@@ -335,7 +379,7 @@ export default function Home() {
         setPendingTransactions([]); // Optimistic clear
         try {
             await Promise.all(currentTxs.map(tx => 
-                fetch(`/api/finance/pending/${tx._id}/approve`, {
+                fetch(`/api/finance/pending/approve`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                     body: JSON.stringify({ tx_id: tx._id, name: tx.name, description: tx.description || "", amount: Number(tx.amount), type: tx.type || 'debit', category: tx.category })
@@ -352,7 +396,7 @@ export default function Home() {
         setPendingTransactions([]); // Optimistic clear
         try {
             await Promise.all(currentTxs.map(tx => 
-                fetch(`/api/finance/pending/${tx._id}/reject`, {
+                fetch(`/api/finance/pending/reject`, {
                     method: "DELETE",
                     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                     body: JSON.stringify({ tx_id: tx._id })
@@ -402,6 +446,21 @@ export default function Home() {
         } catch (err) { console.error(err); }
     };
 
+    const handleSwitchContext = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const groupId = e.target.value === "personal" ? null : e.target.value;
+        try {
+            const res = await fetch('/api/finance/groups/active', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ activeGroupId: groupId })
+            });
+            if (res.ok) {
+                fetchDashboardData();
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -488,9 +547,15 @@ export default function Home() {
                     const chunkText = decoder.decode(value, { stream: true });
                     setMessages((prev) => {
                         const lastMsg = prev[prev.length - 1];
+                        let newContent = lastMsg.content + chunkText;
+                        const skillMatch = newContent.match(/__SKILL__:(.*?)\n/);
+                        if (skillMatch) {
+                            setActiveSkill(skillMatch[1]);
+                            newContent = newContent.replace(skillMatch[0], "");
+                        }
                         return [
                             ...prev.slice(0, -1),
-                            { ...lastMsg, content: lastMsg.content + chunkText }
+                            { ...lastMsg, content: newContent }
                         ];
                     });
                 }
@@ -542,13 +607,94 @@ export default function Home() {
         )
     }
 
+    if (isAuthenticated === false) {
+        return <LandingPage />;
+    }
+
     const financeData = {
         summary: summaryData,
         recentTransactions: recentLedgerData
     };
 
     return (
-        <div className="h-screen w-full flex flex-col font-sans bg-[#f4f4f4] text-black overflow-hidden relative">
+        <div className="h-[100dvh] w-full flex flex-col md:flex-row font-sans bg-[#f4f4f4] text-black overflow-hidden relative">
+            
+            {/* SIDEBAR (PC) / BOTTOM NAVIGATION BAR (Mobile) */}
+            <nav className={`border-t-4 md:border-t-0 md:border-r-4 border-black flex md:flex-col z-50 bg-white transition-all duration-300 w-full md:h-[100dvh] md:order-first order-last ${isSidebarOpen ? 'md:w-64' : 'md:w-[70px]'} shrink-0`} style={{ minHeight: '70px' }}>
+                {/* Desktop Toggle Button */}
+                <div className="hidden md:flex flex-col border-b-4 border-black bg-white">
+                    <div className="flex items-center" style={{ minHeight: '70px', height: '70px' }}>
+                        <button 
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+                            className={`p-3 w-full h-full flex hover:bg-gray-200 transition-colors ${isSidebarOpen ? 'justify-end pr-4' : 'justify-center'}`}
+                        >
+                            <Menu className="w-8 h-8" strokeWidth={3} />
+                        </button>
+                    </div>
+                    {isSidebarOpen && (
+                        <div className="p-4 border-t-4 border-black bg-[#f4f4f4]">
+                            <label className="block text-xs font-black uppercase mb-1">Context</label>
+                            <select 
+                                value={rawProfile?.activeGroupId || "personal"}
+                                onChange={handleSwitchContext}
+                                className="w-full p-2 border-2 border-black font-mono text-sm bg-white cursor-pointer focus:outline-none"
+                            >
+                                <option value="personal">Personal</option>
+                                {myGroups.map(g => (
+                                    <option key={g.id} value={g.id}>{g.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex md:flex-col w-full h-full">
+                    <button 
+                        onClick={() => setActiveTab('analysis')}
+                        className={`flex-1 md:flex-none md:h-[70px] flex flex-col md:flex-row items-center justify-center gap-2 border-r-4 md:border-r-0 md:border-b-4 border-black transition-colors ${activeTab === 'analysis' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'} ${isSidebarOpen ? 'md:justify-start md:px-6' : 'md:justify-center'}`}
+                    >
+                        <BarChart2 className="w-6 h-6 md:w-8 md:h-8" strokeWidth={3} />
+                        <span className={`text-[10px] md:text-sm font-black uppercase ${isSidebarOpen ? 'hidden md:block' : 'hidden'}`}>Analysis</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('home')}
+                        className={`flex-1 md:flex-none md:h-[70px] flex flex-col md:flex-row items-center justify-center gap-2 border-r-4 md:border-r-0 md:border-b-4 border-black transition-colors ${activeTab === 'home' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'} ${isSidebarOpen ? 'md:justify-start md:px-6' : 'md:justify-center'}`}
+                    >
+                        <HomeIcon className="w-6 h-6 md:w-8 md:h-8" strokeWidth={3} />
+                        <span className={`text-[10px] md:text-sm font-black uppercase ${isSidebarOpen ? 'hidden md:block' : 'hidden'}`}>Home</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('chat')}
+                        className={`flex-1 md:flex-none md:h-[70px] flex flex-col md:flex-row items-center justify-center gap-2 border-r-4 md:border-r-0 md:border-b-4 border-black transition-colors ${activeTab === 'chat' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'} ${isSidebarOpen ? 'md:justify-start md:px-6' : 'md:justify-center'}`}
+                    >
+                        <MessageSquare className="w-6 h-6 md:w-8 md:h-8" strokeWidth={3} />
+                        <span className={`text-[10px] md:text-sm font-black uppercase ${isSidebarOpen ? 'hidden md:block' : 'hidden'}`}>Agent</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('notifications')}
+                        className={`flex-1 md:flex-none md:h-[70px] flex flex-col md:flex-row items-center justify-center gap-2 border-r-4 md:border-r-0 md:border-b-4 border-black relative transition-colors ${activeTab === 'notifications' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'} ${isSidebarOpen ? 'md:justify-start md:px-6' : 'md:justify-center'}`}
+                    >
+                        <div className="relative">
+                            <Bell className="w-6 h-6 md:w-8 md:h-8" strokeWidth={3} />
+                            {pendingTransactions.length > 0 && (
+                                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border-2 border-black"></span>
+                                </span>
+                            )}
+                        </div>
+                        <span className={`text-[10px] md:text-sm font-black uppercase ${isSidebarOpen ? 'hidden md:block' : 'hidden'}`}>Alerts</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('settings')}
+                        className={`flex-1 md:flex-none md:h-[70px] flex flex-col md:flex-row items-center justify-center gap-2 md:border-b-4 border-black transition-colors ${activeTab === 'settings' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'} ${isSidebarOpen ? 'md:justify-start md:px-6' : 'md:justify-center'}`}
+                    >
+                        <Settings className="w-6 h-6 md:w-8 md:h-8" strokeWidth={3} />
+                        <span className={`text-[10px] md:text-sm font-black uppercase ${isSidebarOpen ? 'hidden md:block' : 'hidden'}`}>Settings</span>
+                    </button>
+                </div>
+            </nav>
+
             {/* MAIN CONTENT AREA */}
             <main className="flex-1 overflow-y-auto w-full relative z-10">
                 {activeTab === 'analysis' && (
@@ -585,6 +731,7 @@ export default function Home() {
                         isUploading={isUploading}
                         selectedImageFile={selectedImageFile}
                         setSelectedImageFile={setSelectedImageFile}
+                        activeSkill={activeSkill}
                     />
                 )}
                 {activeTab === 'notifications' && (
@@ -612,56 +759,12 @@ export default function Home() {
                         handleChangePassword={handleChangePassword}
                         saveKeysToBackend={() => saveKeysToBackend(apiKeys, geminiApiKeys, openRouterApiKeys)}
                         getAuthHeaders={getAuthHeaders}
+                        textScale={textScale}
+                        setTextScale={handleSetTextScale}
+                        rawProfile={rawProfile}
                     />
                 )}
             </main>
-
-            {/* BOTTOM NAVIGATION BAR */}
-            <nav className="border-t-4 border-black flex z-50 bg-white" style={{ minHeight: '70px' }}>
-                <button 
-                    onClick={() => setActiveTab('analysis')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'analysis' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
-                >
-                    <BarChart2 className="w-6 h-6" strokeWidth={3} />
-                    <span className="text-[10px] font-black uppercase hidden sm:block">Analysis</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('home')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'home' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
-                >
-                    <HomeIcon className="w-6 h-6" strokeWidth={3} />
-                    <span className="text-[10px] font-black uppercase hidden sm:block">Home</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('chat')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black transition-colors ${activeTab === 'chat' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
-                >
-                    <MessageSquare className="w-6 h-6" strokeWidth={3} />
-                    <span className="text-[10px] font-black uppercase hidden sm:block">Agent</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('notifications')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 border-r-4 border-black relative transition-colors ${activeTab === 'notifications' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
-                >
-                    <div className="relative">
-                        <Bell className="w-6 h-6" strokeWidth={3} />
-                        {pendingTransactions.length > 0 && (
-                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border-2 border-black"></span>
-                            </span>
-                        )}
-                    </div>
-                    <span className="text-[10px] font-black uppercase hidden sm:block">Alerts</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('settings')}
-                    className={`flex-1 py-3 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === 'settings' ? 'bg-[#008CD4] text-white' : 'hover:bg-gray-100 text-black'}`}
-                >
-                    <Settings className="w-6 h-6" strokeWidth={3} />
-                    <span className="text-[10px] font-black uppercase hidden sm:block">Settings</span>
-                </button>
-            </nav>
         </div>
     );
 }
