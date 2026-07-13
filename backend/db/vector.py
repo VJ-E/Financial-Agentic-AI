@@ -1,9 +1,13 @@
 import os
 import hashlib
+import warnings
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-import google.generativeai as genai
 
+# Suppress deprecation warning to preserve text-embedding-004 compatibility
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import google.generativeai as genai
 _client = None
 
 def get_qdrant_client():
