@@ -16,6 +16,8 @@ class UserProfile(BaseModel):
     monthlyIncome: float = 0.0
     totalBalance: float = 0.0
     activeSavingsGoals: List[SavingsGoal] = Field(default_factory=list)
+    activeGroupId: Optional[str] = None
+    groupIds: List[str] = Field(default_factory=list)
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
 
