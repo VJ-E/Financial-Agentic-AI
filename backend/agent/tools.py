@@ -22,14 +22,8 @@ def generate_short_id() -> str:
 @tool
 async def get_financial_data(user_id: str) -> dict:
     """
-    Fetches the user's financial profile and recent 50 transactions.
-    
-    Args:
-        user_id: The unique string identifier for the user.
-        
-    Returns:
-        A dictionary containing the user's profile (monthlyIncome, totalBalance, activeSavingsGoals)
-        and an array of their recent transactions.
+    Fetches the user's financial profile and recent transactions.
+    If the user has an active group, this fetches the aggregated group balance and transactions.
     """
     db = db_manager.db
     if db is None:
@@ -38,7 +32,6 @@ async def get_financial_data(user_id: str) -> dict:
     profile = await db.userprofiles.find_one({"userId": user_id})
     
     if not profile:
-        # Return a zero-state default profile for brand new users
         return {
             "success": True,
             "data": {
@@ -54,30 +47,66 @@ async def get_financial_data(user_id: str) -> dict:
             }
         }
         
-    # Fetch recent transactions without a strict limit to allow full client-side filtering
-    cursor = db.transactions.find({"userId": user_id}).sort("date", -1)
+    active_group_id = profile.get("activeGroupId")
+    is_group = False
+    group_name = ""
+    member_ids = [user_id]
+    
+    if active_group_id:
+        group = await db.groups.find_one({"_id": active_group_id})
+        if group:
+            is_group = True
+            group_name = group.get("name", "Unknown Group")
+            member_ids = [m["userId"] for m in group.get("members", [])]
+            
+            # Aggregate balances across all members
+            pipeline = [
+                {"$match": {"userId": {"$in": member_ids}}},
+                {"$group": {
+                    "_id": None, 
+                    "totalBalance": {"$sum": "$totalBalance"},
+                    "bankBalance": {"$sum": "$bankBalance"},
+                    "cashBalance": {"$sum": "$cashBalance"},
+                    "monthlyIncome": {"$sum": "$monthlyIncome"}
+                }}
+            ]
+            agg_result = await db.userprofiles.aggregate(pipeline).to_list(length=1)
+            if agg_result:
+                agg = agg_result[0]
+                profile["totalBalance"] = agg.get("totalBalance", 0)
+                profile["bankBalance"] = agg.get("bankBalance", 0)
+                profile["cashBalance"] = agg.get("cashBalance", 0)
+                profile["monthlyIncome"] = agg.get("monthlyIncome", 0)
+                
+    # Fetch recent transactions
+    cursor = db.transactions.find({"userId": {"$in": member_ids}}).sort("date", -1)
     recent_transactions = await cursor.to_list(length=None)
     
-    # Process ObjectId to string for JSON serialization compatibility
     for tx in recent_transactions:
         tx["_id"] = str(tx["_id"])
-        # Patch legacy transactions that don't have a type field
         if "type" not in tx:
             tx["type"] = "credit" if tx.get("category") == "Income" else "debit"
+            
+    profile_data = {
+        "userId": profile.get("userId"),
+        "activeGroupId": profile.get("activeGroupId"),
+        "monthlyIncome": profile.get("monthlyIncome", 0.0),
+        "totalBalance": profile.get("totalBalance", 0.0),
+        "bankBalance": profile.get("bankBalance", profile.get("totalBalance", 0.0)),
+        "cashBalance": profile.get("cashBalance", 0.0),
+        "activeSavingsGoals": profile.get("activeSavingsGoals", []),
+        "customCategories": profile.get("customCategories", ["Unknown"]),
+        "merchant_category_map": profile.get("merchant_category_map", {})
+    }
+    
+    if is_group:
+        profile_data["_GROUP_CONTEXT"] = f"You are currently analyzing data for the group '{group_name}'. Transactions belong to multiple users. When asked 'how much did we spend?', sum the transactions. When asked 'who spent the most?', compare the users."
+        profile_data["groupName"] = group_name
         
     return {
         "success": True,
         "data": {
-            "profile": {
-                "userId": profile.get("userId"),
-                "monthlyIncome": profile.get("monthlyIncome", 0.0),
-                "totalBalance": profile.get("totalBalance", 0.0),
-                "bankBalance": profile.get("bankBalance", profile.get("totalBalance", 0.0)), # default to total if missing
-                "cashBalance": profile.get("cashBalance", 0.0),
-                "activeSavingsGoals": profile.get("activeSavingsGoals", []),
-                "customCategories": profile.get("customCategories", ["Unknown"]),
-                "merchant_category_map": profile.get("merchant_category_map", {})
-            },
+            "profile": profile_data,
             "recentTransactions": recent_transactions
         }
     }
@@ -634,3 +663,390 @@ async def delete_goal(user_id: str, goal_id: str, *, config: RunnableConfig = No
             "newBalance": new_balance
         }
     }
+
+@tool
+async def update_memory(user_id: str, key: str, value: str, *, config: RunnableConfig = None) -> dict:
+    """
+    Saves a user preference or long-term memory fact.
+    
+    Args:
+        user_id: The identifier of the user.
+        key: A short string identifying the trait (e.g. 'risk_tolerance', 'dietary_preference', 'tax_bracket').
+        value: The string value to remember.
+        
+    Returns:
+        A dictionary indicating success.
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    await db.userprofiles.update_one(
+        {"userId": user_id},
+        {"$set": {f"preferences.{key}": value}}
+    )
+    return {"success": True, "message": f"Memory saved: {key} = {value}"}
+
+@tool
+async def tax_calculator(income: float, deductions: float) -> dict:
+    """
+    A specific playbook tool for the Tax Analyst skill. Calculates estimated tax liability based on standard Indian tax slabs.
+    
+    Args:
+        income: Total annual income.
+        deductions: Total eligible deductions under section 80C etc.
+        
+    Returns:
+        A dictionary with the estimated tax liability.
+    """
+    taxable_income = max(0, income - deductions)
+    tax = 0.0
+    # Simplified New Tax Regime slabs (approximate)
+    if taxable_income <= 300000:
+        tax = 0.0
+    elif taxable_income <= 600000:
+        tax = (taxable_income - 300000) * 0.05
+    elif taxable_income <= 900000:
+        tax = 15000 + (taxable_income - 600000) * 0.10
+    elif taxable_income <= 1200000:
+        tax = 45000 + (taxable_income - 900000) * 0.15
+    elif taxable_income <= 1500000:
+        tax = 90000 + (taxable_income - 1200000) * 0.20
+    else:
+        tax = 150000 + (taxable_income - 1500000) * 0.30
+        
+    # Standard rebate under 87A (Simplified: up to 7L income is tax free)
+    if taxable_income <= 700000:
+        tax = 0.0
+        
+    cess = tax * 0.04
+    total_tax = tax + cess
+    
+    return {
+        "success": True,
+        "data": {
+            "taxable_income": taxable_income,
+            "estimated_tax": tax,
+            "health_education_cess": cess,
+            "total_tax_liability": total_tax
+        }
+    }
+
+@tool
+async def investment_analyzer(ticker: str, amount: float) -> dict:
+    """
+    A specific playbook tool for the Investment Analyst skill. Analyzes potential returns for a given ticker or asset class.
+    
+    Args:
+        ticker: The stock ticker, mutual fund symbol, or asset class (e.g., 'NIFTY50', 'GOLD', 'FD').
+        amount: The monetary amount to invest.
+        
+    Returns:
+        A dictionary with projected future values based on historical average CAGRs.
+    """
+    cagr_map = {
+        "NIFTY50": 0.12,
+        "GOLD": 0.08,
+        "FD": 0.065,
+        "S&P500": 0.10,
+        "REAL_ESTATE": 0.07,
+    }
+    
+    upper_ticker = ticker.upper()
+    cagr = cagr_map.get(upper_ticker, 0.10) # default to 10%
+    
+    def project(years):
+        return amount * ((1 + cagr) ** years)
+        
+    return {
+        "success": True,
+        "data": {
+            "asset": upper_ticker,
+            "assumed_cagr": cagr,
+            "invested_amount": amount,
+            "projected_5_years": project(5),
+            "projected_10_years": project(10),
+            "projected_20_years": project(20)
+        }
+    }
+
+
+@tool
+async def audit_subscriptions(user_id: str) -> dict:
+    """
+    Scans transaction history to find recurring subscriptions and flags unused ones.
+    Calculates total monthly and annual subscription spend.
+    
+    Args:
+        user_id: The specific ID matching the user.
+        
+    Returns:
+        A dictionary with subscription analysis results.
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    six_months_ago = datetime.datetime.utcnow() - datetime.timedelta(days=180)
+    
+    pipeline = [
+        {"$match": {
+            "userId": user_id, 
+            "type": "debit",
+            "date": {"$gte": six_months_ago}
+        }},
+        {"$group": {
+            "_id": "$name",
+            "count": {"$sum": 1},
+            "total_spent": {"$sum": "$amount"},
+            "avg_amount": {"$avg": "$amount"},
+            "last_date": {"$max": "$date"}
+        }},
+        {"$match": {
+            "count": {"$gte": 3}
+        }},
+        {"$sort": {"total_spent": -1}}
+    ]
+    
+    results = await db.transactions.aggregate(pipeline).to_list(length=None)
+    
+    total_monthly = 0
+    subs = []
+    
+    for r in results:
+        monthly_cost = r["avg_amount"]
+        total_monthly += monthly_cost
+        subs.append({
+            "merchant": r["_id"],
+            "monthly_cost": round(monthly_cost, 2),
+            "annual_cost": round(monthly_cost * 12, 2),
+            "frequency_in_6_months": r["count"],
+            "last_charged": r["last_date"].strftime("%Y-%m-%d") if isinstance(r["last_date"], datetime.datetime) else str(r["last_date"])
+        })
+        
+    return {
+        "success": True,
+        "message": f"Found {len(subs)} possible subscriptions.",
+        "data": {
+            "total_monthly_spend": round(total_monthly, 2),
+            "total_annual_spend": round(total_monthly * 12, 2),
+            "subscriptions": subs
+        }
+    }
+
+@tool
+async def calculate_emergency_fund(user_id: str) -> dict:
+    """
+    Calculates a 3-6 month emergency fund target based on essential expenses from recent transactions.
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    three_months_ago = datetime.datetime.utcnow() - datetime.timedelta(days=90)
+    
+    pipeline = [
+        {"$match": {
+            "userId": user_id, 
+            "type": "debit",
+            "date": {"$gte": three_months_ago},
+        }},
+        {"$group": {
+            "_id": None,
+            "total_essential": {"$sum": "$amount"}
+        }}
+    ]
+    
+    results = await db.transactions.aggregate(pipeline).to_list(length=1)
+    
+    if not results:
+        total_90_days = 0.0
+    else:
+        # Assuming roughly 70% of total debit is essential for estimation if uncategorized correctly
+        total_90_days = results[0]["total_essential"] * 0.70
+        
+    monthly_essential = total_90_days / 3.0
+    
+    target_3_months = monthly_essential * 3
+    target_6_months = monthly_essential * 6
+    
+    profile = await db.userprofiles.find_one({"userId": user_id})
+    current_cash = profile.get("cashBalance", 0.0) + profile.get("bankBalance", profile.get("totalBalance", 0.0))
+    
+    return {
+        "success": True,
+        "data": {
+            "monthly_essential_expense_estimate": round(monthly_essential, 2),
+            "target_3_months": round(target_3_months, 2),
+            "target_6_months": round(target_6_months, 2),
+            "current_liquid_cash": current_cash,
+            "gap_to_6_months": round(max(0, target_6_months - current_cash), 2)
+        }
+    }
+
+@tool
+async def review_spending(user_id: str, days: int = 30) -> dict:
+    """
+    Generates a categorized breakdown of spending.
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    start_date = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+    
+    pipeline = [
+        {"$match": {
+            "userId": user_id, 
+            "type": "debit",
+            "date": {"$gte": start_date}
+        }},
+        {"$group": {
+            "_id": "$category",
+            "total_spent": {"$sum": "$amount"}
+        }},
+        {"$sort": {"total_spent": -1}}
+    ]
+    
+    results = await db.transactions.aggregate(pipeline).to_list(length=None)
+    total_spent = sum(r["total_spent"] for r in results)
+    
+    breakdown = []
+    for r in results:
+        breakdown.append({
+            "category": r["_id"],
+            "amount": round(r["total_spent"], 2),
+            "percentage_of_total": round((r["total_spent"] / total_spent * 100), 2) if total_spent > 0 else 0
+        })
+        
+    return {
+        "success": True,
+        "message": f"Spending review for last {days} days.",
+        "data": {
+            "total_spent": round(total_spent, 2),
+            "categories": breakdown
+        }
+    }
+
+@tool
+async def track_financial_goal(user_id: str, goal_short_id: str, target_date_str: str) -> dict:
+    """
+    Computes remaining target, required monthly savings, and tracks progress for a specific goal.
+    target_date_str: ISO string of the target date (e.g. '2026-12-31').
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    profile = await db.userprofiles.find_one({"userId": user_id})
+    if not profile:
+        return {"success": False, "message": "Profile not found"}
+        
+    goals = profile.get("activeSavingsGoals", [])
+    target_goal = next((g for g in goals if g.get("shortId") == goal_short_id), None)
+    
+    if not target_goal:
+        return {"success": False, "message": f"Goal {goal_short_id} not found."}
+        
+    try:
+        target_date = datetime.datetime.fromisoformat(target_date_str.replace('Z', '+00:00'))
+    except Exception:
+        target_date = datetime.datetime.strptime(target_date_str, "%Y-%m-%d")
+        
+    today = datetime.datetime.utcnow()
+    
+    months_remaining = max(1, (target_date.year - today.year) * 12 + target_date.month - today.month)
+    
+    target_amount = target_goal.get("targetAmount", 0)
+    current_amount = target_goal.get("currentAmount", 0)
+    
+    remaining_amount = max(0, target_amount - current_amount)
+    monthly_required = remaining_amount / months_remaining
+    
+    return {
+        "success": True,
+        "data": {
+            "title": target_goal.get("title"),
+            "targetAmount": target_amount,
+            "currentAmount": current_amount,
+            "progress_percentage": round((current_amount / target_amount * 100), 2) if target_amount > 0 else 0,
+            "months_remaining": months_remaining,
+            "monthly_savings_required": round(monthly_required, 2)
+        }
+    }
+
+@tool
+async def detect_lifestyle_creep(user_id: str) -> dict:
+    """
+    Detects lifestyle creep by comparing spending in the last 6 months against the 6 months prior.
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    today = datetime.datetime.utcnow()
+    six_months_ago = today - datetime.timedelta(days=180)
+    twelve_months_ago = today - datetime.timedelta(days=360)
+    
+    async def get_spend(start, end):
+        pipeline = [
+            {"$match": {
+                "userId": user_id, 
+                "type": "debit",
+                "date": {"$gte": start, "$lt": end}
+            }},
+            {"$group": {
+                "_id": "$category",
+                "total_spent": {"$sum": "$amount"}
+            }}
+        ]
+        res = await db.transactions.aggregate(pipeline).to_list(length=None)
+        return {r["_id"]: r["total_spent"] for r in res}
+        
+    recent_spend = await get_spend(six_months_ago, today)
+    older_spend = await get_spend(twelve_months_ago, six_months_ago)
+    
+    creep = {}
+    for cat, recent_amt in recent_spend.items():
+        older_amt = older_spend.get(cat, 0.0)
+        if recent_amt > older_amt * 1.1: # 10% increase threshold
+            creep[cat] = {
+                "previous_6_months": round(older_amt, 2),
+                "last_6_months": round(recent_amt, 2),
+                "increase": round(recent_amt - older_amt, 2),
+                "increase_percentage": round(((recent_amt - older_amt) / older_amt * 100) if older_amt > 0 else 100.0, 2)
+            }
+            
+    return {
+        "success": True,
+        "message": f"Detected potential lifestyle creep in {len(creep)} categories.",
+        "data": creep
+    }
+
+@tool
+async def calculate_net_worth(user_id: str) -> dict:
+    """
+    Calculates net worth from liquid assets and active goal vaults.
+    """
+    db = db_manager.db
+    if db is None:
+        return {"success": False, "message": "Database not connected"}
+        
+    profile = await db.userprofiles.find_one({"userId": user_id})
+    if not profile:
+        return {"success": False, "message": "Profile not found"}
+        
+    assets = profile.get("totalBalance", 0.0)
+    
+    goals = profile.get("activeSavingsGoals", [])
+    goals_total = sum(g.get("currentAmount", 0) for g in goals)
+    
+    return {
+        "success": True,
+        "data": {
+            "liquid_assets": assets,
+            "goal_vaults": goals_total,
+            "total_net_worth": assets + goals_total
+        }
+    }
+
