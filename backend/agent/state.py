@@ -13,3 +13,5 @@ class AgentState(TypedDict):
     api_keys: list[str]
     openrouter_api_keys: list[str]
     user_id: str
+    active_skill: str
+    user_context: str
