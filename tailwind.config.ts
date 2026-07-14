@@ -38,6 +38,22 @@ const config: Config = {
             },
             borderRadius: {
                 'none': '0px',
+            },
+            fontSize: {
+                xs: ['calc(0.75rem * var(--text-scale, 1))', { lineHeight: 'calc(1rem * var(--text-scale, 1))' }],
+                sm: ['calc(0.875rem * var(--text-scale, 1))', { lineHeight: 'calc(1.25rem * var(--text-scale, 1))' }],
+                base: ['calc(1rem * var(--text-scale, 1))', { lineHeight: 'calc(1.5rem * var(--text-scale, 1))' }],
+                lg: ['calc(1.125rem * var(--text-scale, 1))', { lineHeight: 'calc(1.75rem * var(--text-scale, 1))' }],
+                xl: ['calc(1.25rem * var(--text-scale, 1))', { lineHeight: 'calc(1.75rem * var(--text-scale, 1))' }],
+                '2xl': ['calc(1.5rem * var(--text-scale, 1))', { lineHeight: 'calc(2rem * var(--text-scale, 1))' }],
+                '3xl': ['calc(1.875rem * var(--text-scale, 1))', { lineHeight: 'calc(2.25rem * var(--text-scale, 1))' }],
+                '4xl': ['calc(2.25rem * var(--text-scale, 1))', { lineHeight: 'calc(2.5rem * var(--text-scale, 1))' }],
+                '5xl': ['calc(3rem * var(--text-scale, 1))', { lineHeight: '1' }],
+                '6xl': ['calc(3.75rem * var(--text-scale, 1))', { lineHeight: '1' }],
+                '7xl': ['calc(4.5rem * var(--text-scale, 1))', { lineHeight: '1' }],
+                '8xl': ['calc(6rem * var(--text-scale, 1))', { lineHeight: '1' }],
+                '9xl': ['calc(8rem * var(--text-scale, 1))', { lineHeight: '1' }],
+                '[10px]': ['calc(0.625rem * var(--text-scale, 1))', { lineHeight: 'calc(1rem * var(--text-scale, 1))' }]
             }
         },
     },
