@@ -44,6 +44,11 @@ async def chat_endpoint(req: Request, request: ChatRequest, user: dict = Depends
                 config=config,
                 version="v2"
             ):
+                if event["event"] == "on_chain_end" and event["name"] == "router":
+                    out_data = event["data"].get("output", {})
+                    if "active_skill" in out_data:
+                        yield f"__SKILL__:{out_data['active_skill']}\n"
+
                 if event["event"] == "on_chat_model_stream":
                     chunk = event["data"]["chunk"]
                     if hasattr(chunk, "content") and chunk.content:
