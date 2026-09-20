@@ -9,6 +9,7 @@ from backend.db.mongo import db_manager
 from backend.db.revert import execute_revert_action
 import json
 import datetime
+import os
 
 router = APIRouter(tags=["Chat & Agent"])
 
@@ -33,6 +34,32 @@ async def chat_endpoint(req: Request, request: ChatRequest, user: dict = Depends
             pass
 
     async def generator():
+        # Check API keys first
+        valid_keys = [k for k in request.api_keys if k.strip()]
+        if not valid_keys:
+            groq_keys = [
+                os.getenv("GROQ_API_KEY_1", os.getenv("GROQ_API_KEY")),
+                os.getenv("GROQ_API_KEY_2"),
+                os.getenv("GROQ_API_KEY_3")
+            ]
+            valid_keys = [k for k in groq_keys if k]
+            
+        if not valid_keys:
+            err_msg = "You didn't have an API key for the AI. Go to Settings -> Groq API -> Paste Key. Don't have a key? Get one here: [https://console.groq.com/keys](https://console.groq.com/keys)"
+            yield err_msg
+            
+            if db_manager.db is not None:
+                updated_messages = request.messages.copy()
+                updated_messages.append({"role": "assistant", "content": err_msg, "chatId": request.chat_id})
+                if len(updated_messages) > 10:
+                    updated_messages = updated_messages[-10:]
+                await db_manager.db.chat_history.update_one(
+                    {"userId": user["user_id"]},
+                    {"$set": {"messages": updated_messages, "updatedAt": datetime.datetime.utcnow()}},
+                    upsert=True
+                )
+            return
+
         yielded_any = False
         full_response = ""
         try:
